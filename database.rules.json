@@ -197,6 +197,56 @@
           }
         }
       }
+    },
+    "gameSettings": {
+      ".read": true,
+      ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.token.email_verified == true && auth.token.email == 'mawasetiawan@gmail.com' && newData.exists()",
+      ".validate": "newData.hasChildren([\"zoomMin\",\"zoomMax\",\"orbitSpeed\",\"zoomSpeed\",\"walkSpeed\",\"runSpeed\",\"sprintSpeed\",\"dashSpeed\",\"dashSeconds\",\"jumpSpeed\",\"gravity\",\"invertPitch\",\"invertYaw\",\"invertZoom\"]) && newData.child('zoomMin').val() <= newData.child('zoomMax').val() && newData.child('walkSpeed').val() <= newData.child('runSpeed').val() && newData.child('runSpeed').val() <= newData.child('sprintSpeed').val()",
+      "zoomMin": {
+        ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 16"
+      },
+      "zoomMax": {
+        ".validate": "newData.isNumber() && newData.val() >= 3 && newData.val() <= 30"
+      },
+      "orbitSpeed": {
+        ".validate": "newData.isNumber() && newData.val() >= 0.1 && newData.val() <= 3"
+      },
+      "zoomSpeed": {
+        ".validate": "newData.isNumber() && newData.val() >= 0.1 && newData.val() <= 3"
+      },
+      "walkSpeed": {
+        ".validate": "newData.isNumber() && newData.val() >= 0.5 && newData.val() <= 10"
+      },
+      "runSpeed": {
+        ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 15"
+      },
+      "sprintSpeed": {
+        ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 24"
+      },
+      "dashSpeed": {
+        ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 36"
+      },
+      "dashSeconds": {
+        ".validate": "newData.isNumber() && newData.val() >= 0.05 && newData.val() <= 1"
+      },
+      "jumpSpeed": {
+        ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 8"
+      },
+      "gravity": {
+        ".validate": "newData.isNumber() && newData.val() >= 10 && newData.val() <= 40"
+      },
+      "invertPitch": {
+        ".validate": "newData.isBoolean()"
+      },
+      "invertYaw": {
+        ".validate": "newData.isBoolean()"
+      },
+      "invertZoom": {
+        ".validate": "newData.isBoolean()"
+      },
+      "$other": {
+        ".validate": false
+      }
     }
   }
 }

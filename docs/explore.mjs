@@ -1,9 +1,11 @@
-import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=1';
+import { bindOrbit } from './orbit.mjs?v=1';
+import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=2';
 
-export async function mountExploration(world, signal, replication) {
+export async function mountExploration(world, signal, replication, settings) {
   const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js');
   if (signal.aborted) return;
   const canvas = world.querySelector('canvas');
+  const { orbit, clampDistance } = bindOrbit(canvas, settings, signal);
   const stick = world.querySelector('#joystick');
   const thumb = stick.firstElementChild;
   const actions = world.querySelector('#actions');
@@ -163,12 +165,15 @@ export async function mountExploration(world, signal, replication) {
   function animate(now) {
     const dt = Math.min((now - previous) / 1000, 0.05);
     previous = now;
-    input.x = Number(held.has('KeyD')) - Number(held.has('KeyA')) + stickX;
-    input.z = Number(held.has('KeyS')) - Number(held.has('KeyW')) + stickZ;
+    const localX = Number(held.has('KeyD')) - Number(held.has('KeyA')) + stickX;
+    const localZ = Number(held.has('KeyS')) - Number(held.has('KeyW')) + stickZ;
+    const sin = Math.sin(orbit.yaw), cos = Math.cos(orbit.yaw);
+    input.x = localX * cos + localZ * sin;
+    input.z = localZ * cos - localX * sin;
     input.sprint = sprintPointer !== null || held.has('ShiftLeft') || held.has('ShiftRight');
     input.jump = jumpUntil >= now && actor.state === ActorState.GROUNDED && actor.dashLeft === 0 && !input.dash;
     if (input.jump) jumpUntil = 0;
-    stepMovement(actor, input, dt);
+    stepMovement(actor, input, dt, settings);
     input.jump = input.crouch = input.dash = false;
     actor.x = THREE.MathUtils.clamp(actor.x, -49, 49);
     actor.z = THREE.MathUtils.clamp(actor.z, -49, 49);
@@ -199,7 +204,9 @@ export async function mountExploration(world, signal, replication) {
     }
     desiredTarget.set(actor.x, actor.y + 0.95, actor.z);
     target.lerp(desiredTarget, 1 - Math.exp(-12 * dt));
-    cameraOffset.set(0, 3.2, camera.aspect < 0.9 ? 8.5 : 6.7);
+    clampDistance();
+    const horizontal = Math.cos(orbit.pitch) * orbit.distance;
+    cameraOffset.set(sin * horizontal, Math.sin(orbit.pitch) * orbit.distance, cos * horizontal);
     camera.position.copy(target).add(cameraOffset);
     camera.lookAt(target);
     renderer.render(scene, camera);

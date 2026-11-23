@@ -1,0 +1,16 @@
+{
+  "zoomMin": 3,
+  "zoomMax": 14,
+  "orbitSpeed": 1,
+  "zoomSpeed": 1,
+  "walkSpeed": 2,
+  "runSpeed": 4.5,
+  "sprintSpeed": 7.5,
+  "dashSpeed": 15,
+  "dashSeconds": 0.2,
+  "jumpSpeed": 6.6,
+  "gravity": 20,
+  "invertPitch": false,
+  "invertYaw": false,
+  "invertZoom": false
+}

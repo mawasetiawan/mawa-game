@@ -13,11 +13,7 @@ export const ActorState = Object.freeze({
   ON_WATER: 'on water', CONSTRAINED: 'constrained'
 });
 
-const SPEED = { [Gait.WALK]: 2, [Gait.RUN]: 4.5, [Gait.SPRINT]: 7.5 };
-const DASH_DURATION = 0.2;
-const DASH_SPEED = 15;
-const GRAVITY = 20;
-const JUMP_SPEED = 6.6;
+import { defaults } from './game-settings.mjs?v=1';
 
 export function createMovement() {
   return {
@@ -26,7 +22,7 @@ export function createMovement() {
   };
 }
 
-export function stepMovement(actor, input, dt) {
+export function stepMovement(actor, input, dt, settings = defaults) {
   const magnitude = Math.hypot(input.x, input.z);
   const moving = magnitude > 0.08;
   const strength = Math.min(1, magnitude);
@@ -42,29 +38,30 @@ export function stepMovement(actor, input, dt) {
     actor.facingZ = z;
   }
   if (grounded && input.dash && actor.stance === Stance.STAND && !actor.dashLeft) {
-    actor.dashLeft = DASH_DURATION;
+    actor.dashLeft = settings.dashSeconds;
   }
   if (grounded && input.jump && !actor.dashLeft) {
-    actor.verticalSpeed = JUMP_SPEED;
+    actor.verticalSpeed = settings.jumpSpeed;
     actor.state = ActorState.IN_AIR;
   }
 
   let remaining = dt;
   if (actor.dashLeft > 0) {
     const time = Math.min(dt, actor.dashLeft);
-    actor.x += actor.facingX * DASH_SPEED * time;
-    actor.z += actor.facingZ * DASH_SPEED * time;
+    actor.x += actor.facingX * settings.dashSpeed * time;
+    actor.z += actor.facingZ * settings.dashSpeed * time;
     actor.dashLeft = Math.max(0, actor.dashLeft - time);
     remaining -= time;
   }
   const locomotion = actor.stance === Stance.CROUCH ? Gait.WALK :
     input.sprint ? Gait.SPRINT : input.walk ? Gait.WALK : Gait.RUN;
   if (moving && remaining > 0) {
-    actor.x += x * SPEED[locomotion] * strength * remaining;
-    actor.z += z * SPEED[locomotion] * strength * remaining;
+    const speed = locomotion === Gait.WALK ? settings.walkSpeed : locomotion === Gait.SPRINT ? settings.sprintSpeed : settings.runSpeed;
+    actor.x += x * speed * strength * remaining;
+    actor.z += z * speed * strength * remaining;
   }
   if (actor.state !== ActorState.GROUNDED) {
-    actor.verticalSpeed -= GRAVITY * dt;
+    actor.verticalSpeed -= settings.gravity * dt;
     actor.y = Math.max(0, actor.y + actor.verticalSpeed * dt);
     if (!actor.y) actor.verticalSpeed = 0;
     actor.state = !actor.y ? ActorState.GROUNDED :

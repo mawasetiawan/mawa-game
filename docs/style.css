@@ -52,3 +52,12 @@ h2{font-size:1rem}
 .actions button[aria-pressed=true],.actions button:active{background:#305b84;border-color:#b2deff}
 @media(max-width:700px){.chat{width:min(23rem,calc(100% - 1.1rem))}}
 @media(max-height:540px) and (orientation:landscape){.chat{left:auto;right:.65rem;width:min(16rem,40%);top:.55rem}#messages{height:2.5rem}.joystick{width:5rem}}
+canvas.map{touch-action:none;cursor:grab}
+canvas.map:active{cursor:grabbing}
+.world-toolbar{z-index:4}
+.developer-panel{position:absolute;z-index:3;top:3.75rem;right:.7rem;width:min(100% - 1.4rem,26rem);max-height:calc(100% - 4.5rem);overflow:auto;overscroll-behavior:contain}
+.developer-panel form{display:grid;gap:.65rem}
+.developer-fields{display:grid;gap:.35rem}
+.developer-fields label{display:grid;grid-template-columns:minmax(0,1fr) 6rem;align-items:center;gap:.5rem}
+.developer-fields input[type=checkbox]{width:1.15rem;min-height:1.15rem;justify-self:end}
+.developer-panel [role=status]:empty{display:none}

@@ -1,3 +1,4 @@
+import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel } from './game-settings.mjs?v=1';
 import { firebaseConfig } from './config.mjs';
 import { connectMapReplication } from './map-replication.mjs?v=1';
 import { connectParty } from './party.mjs?v=1';
@@ -54,6 +55,20 @@ async function start() {
   const db = data.getDatabase(app);
   const { ref, push, set, remove, get, onValue, onDisconnect, query, orderByKey, limitToLast } = data;
   let session;
+  const settings = { ...defaults };
+  const settingsRef = ref(db, 'gameSettings');
+  fetch('./settings.json?v=1').then(response => {
+    if (!response.ok) throw Error('Settings snapshot unavailable');
+    return response.json();
+  }).then(snapshot => {
+    if (!liveSettings) Object.assign(settings, parseSettings(snapshot));
+  }).catch(error => console.warn(error));
+  let liveSettings = false;
+  onValue(settingsRef, snapshot => {
+    if (!snapshot.exists()) return;
+    liveSettings = true;
+    Object.assign(settings, parseSettings(snapshot.val()));
+  }, error => console.error('Settings read:', error));
 
   function composer(active) {
     ui.send.disabled = !active?.connected || !active.chatReady || active.sending === true;
@@ -82,10 +97,13 @@ async function start() {
     active.messages = messages;
     const exploration = new AbortController();
     active.exploration = exploration;
-    import('./explore.mjs?v=2').then(({ mountExploration }) => {
+    if (active.user.emailVerified && active.user.email === DEVELOPER_EMAIL) {
+      mountDeveloperPanel(ui.world, next => set(settingsRef, next), settings, exploration.signal);
+    }
+    import('./explore.mjs?v=3').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
-      return mountExploration(ui.world, exploration.signal, replication);
+      return mountExploration(ui.world, exploration.signal, replication, settings);
     }).catch(error => {
       if (exploration.signal.aborted) return;
       exploration.abort();

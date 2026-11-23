@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>Mawa Game</title>
-<link rel="stylesheet" href="./style.css?v=explore1">
+<link rel="stylesheet" href="./style.css?v=orbit1">
 </head>
 <body>
 <main>
@@ -35,7 +35,7 @@
   <section id="world" class="world" hidden>
     <canvas class="map" aria-label="Map eksplorasi 3D"></canvas>
     <p id="mapError" class="map-error" role="status" hidden></p>
-    <div class="world-toolbar"><button id="back">Keluar dari Map</button><span id="mapTitle">Map Kosong</span></div>
+    <div class="world-toolbar"><button id="back">Keluar dari Map</button><span id="mapTitle">Map Kosong</span><button id="openDeveloper" type="button" aria-controls="developerPanel" aria-expanded="false" hidden>Developer</button></div>
     <div class="controls" aria-label="Kontrol eksplorasi">
       <div id="joystick" class="joystick" aria-label="Joystick gerak"><span aria-hidden="true"></span></div>
       <div id="actions" class="actions" data-mode="exploration" aria-label="Aksi eksplorasi">
@@ -45,6 +45,10 @@
         <button type="button" data-action="interact">Interaksi</button>
       </div>
     </div>
+    <section id="developerPanel" class="developer-panel panel" aria-label="Pengaturan Developer" hidden>
+      <h2>Pengaturan Developer</h2>
+      <form><div class="developer-fields"></div><button type="submit">Simpan</button><p role="status"></p></form>
+    </section>
     <aside class="chat panel" aria-label="Chat grup">
       <h2>Chat grup</h2><ol id="messages" aria-live="polite" aria-relevant="additions"></ol>
       <form id="composer"><input id="message" aria-label="Pesan" placeholder="Tulis pesan…" maxlength="500" required autocomplete="off"><button id="send" disabled>Kirim</button></form>
@@ -52,6 +56,6 @@
   </section>
   <p id="status" role="status"></p>
 </main>
-<script type="module" src="./app.mjs?v=explore2"></script>
+<script type="module" src="./app.mjs?v=orbit1"></script>
 </body>
 </html>
