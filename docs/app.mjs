@@ -315,8 +315,20 @@ async function start() {
 
   const gameUrl = new URL('./', window.location.href);
   ui.gameLink.value = gameUrl.href;
+  if (standalone) {
+    ui.loginChoiceTitle.textContent = 'Masuk ke app Mawa Game';
+    ui.loginChoiceHint.textContent = 'Pilih akun pada jendela Google. Setelah berhasil, game akan membuka lobby di app ini.';
+    ui.loginHere.textContent = 'Lanjut dengan Google';
+    ui.loginOther.hidden = true;
+    try {
+      await authSdk.setPersistence(auth, authSdk.browserLocalPersistence);
+    } catch (error) {
+      console.warn('Penyimpanan sesi login tidak dapat diatur:', error);
+    }
+  }
+
   const agent = navigator.userAgent;
-  if (/iPhone|iPad|iPod/.test(agent) && !/CriOS/.test(agent) && gameUrl.protocol === 'https:') {
+  if (!standalone && /iPhone|iPad|iPod/.test(agent) && !/CriOS/.test(agent) && gameUrl.protocol === 'https:') {
     ui.loginChrome.href = 'googlechromes:' + gameUrl.href.slice('https:'.length);
     ui.loginChrome.hidden = false;
   }
@@ -335,10 +347,24 @@ async function start() {
       ui.copyGameStatus.textContent = 'Salin link yang dipilih.';
     }
   });
-  bind(ui.loginHere, () => {
+  ui.loginHere.addEventListener('click', async () => {
+    ui.login.disabled = true;
     ui.loginChoice.close();
-    return authSdk.signInWithPopup(auth, new authSdk.GoogleAuthProvider());
-  }, 'Login Google gagal. Coba lagi.');
+    status('');
+    try {
+      const provider = new authSdk.GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await authSdk.signInWithPopup(auth, provider);
+    } catch (error) {
+      console.warn('Login Google:', error);
+      const blocked = error.code === 'auth/popup-blocked';
+      const closed = error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request';
+      status(blocked ? 'Jendela login diblokir. Izinkan pop-up lalu coba lagi.' :
+        closed ? 'Login belum selesai. Buka lagi dan pilih akun Google.' : 'Login Google gagal. Coba lagi.');
+    } finally {
+      ui.login.disabled = false;
+    }
+  });
   bind(ui.logout, async () => {
     if (session?.connected) {
       await session.party.leave();
