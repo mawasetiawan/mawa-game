@@ -135,3 +135,10 @@ canvas.map:active{cursor:grabbing}
 .gameplay-hud .chat #send{background:#d4e8a8;color:#1a302a}
 @media(max-width:665px){.hud-compass,.gameplay-hud .world-toolbar button span{display:none}.hud-tag{padding:7px 10px}.gameplay-hud .world-toolbar button{padding:0 8px}.gameplay-hud .developer-panel{top:65px}}
 @media(max-height:530px){.gameplay-hud .joystick{width:80px}}
+
+/* Standalone and Safari in-tab fallback fill the visible game viewport. */
+html.immersive-game,html.immersive-game body{overflow:hidden;overscroll-behavior:none}
+.world.immersive-map{position:fixed;inset:0;z-index:100;width:100%;height:100vh;height:100dvh;min-height:0;margin:0;border:0;border-radius:0}
+.world.immersive-map .hud-top{left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right))}
+.world.immersive-map .controls{left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right))}
+.world.immersive-map .map-notice{top:calc(max(12px,env(safe-area-inset-top)) + 52px);max-width:min(330px,calc(100% - 32px));z-index:7}

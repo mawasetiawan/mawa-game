@@ -71,27 +71,49 @@ async function start() {
   }, error => console.error('Settings read:', error));
 
   const fullscreen = ui.fullscreen;
-  const fullscreenActive = () => document.fullscreenElement === ui.world || document.webkitFullscreenElement === ui.world;
+  const nativeFullscreen = () => document.fullscreenElement === ui.world || document.webkitFullscreenElement === ui.world;
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const iphone = /iPhone|iPod/.test(navigator.userAgent);
+  function setImmersive(enabled) {
+    ui.world.classList.toggle('immersive-map', enabled);
+    document.documentElement.classList.toggle('immersive-game', enabled);
+    updateFullscreen();
+  }
+
   function updateFullscreen() {
-    const label = fullscreenActive() ? 'Keluar Fullscreen' : 'Fullscreen';
+    const active = nativeFullscreen() || ui.world.classList.contains('immersive-map');
+    const label = active ? 'Keluar Fullscreen' : 'Fullscreen';
     fullscreen.querySelector('span').textContent = label;
     fullscreen.setAttribute('aria-label', label);
-    fullscreen.setAttribute('aria-pressed', String(fullscreenActive()));
+    fullscreen.setAttribute('aria-pressed', String(active));
   }
+
+  function exitMapFullscreen() {
+    setImmersive(false);
+    if (!nativeFullscreen()) return;
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) return exit.call(document);
+  }
+
   for (const name of ['fullscreenchange', 'webkitfullscreenchange']) {
     document.addEventListener(name, updateFullscreen);
   }
   fullscreen.addEventListener('click', async () => {
-    try {
-      if (fullscreenActive()) {
-        await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-        return;
-      }
-      const request = ui.world.requestFullscreen || ui.world.webkitRequestFullscreen;
-      if (request) await request.call(ui.world);
-      else throw new Error('Fullscreen unavailable');
-    } catch {
-      ui.mapNotice.textContent = 'Fullscreen tidak tersedia di browser ini.';
+    ui.mapNotice.textContent = '';
+    if (nativeFullscreen() || ui.world.classList.contains('immersive-map')) {
+      try { await exitMapFullscreen(); } catch (error) { console.warn(error); }
+      return;
+    }
+
+    const request = ui.world.requestFullscreen || ui.world.webkitRequestFullscreen;
+    if (request && !iphone && !standalone) {
+      try { await request.call(ui.world); return; }
+      catch (error) { console.warn(error); }
+    }
+
+    setImmersive(true);
+    if (iphone && !standalone) {
+      ui.mapNotice.textContent = 'Tanpa bilah Safari: Bagikan → Tambah ke Layar Utama → buka dari ikon Mawa Game.';
     }
   });
   function stopBrowserGesture(event) {
@@ -147,10 +169,7 @@ async function start() {
   });
 
   function closeMap(active) {
-    if (fullscreenActive()) {
-      const exit = document.exitFullscreen || document.webkitExitFullscreen;
-      if (exit) Promise.resolve(exit.call(document)).catch(console.warn);
-    }
+    Promise.resolve(exitMapFullscreen()).catch(console.warn);
     ui.mapNotice.textContent = '';
     active.exploration?.abort();
     active.exploration = null;
@@ -204,14 +223,18 @@ async function start() {
       ui.messages.replaceChildren(...rows);
       if (nearBottom) ui.messages.scrollTop = ui.messages.scrollHeight;
       active.chatReady = true;
+      const enteringMap = ui.world.hidden;
       show(ui.world);
+      if (standalone && enteringMap) setImmersive(true);
       composer(active);
     }, error => {
       if (active !== session || active.messages !== messages) return;
       console.error(error);
       active.chatReady = false;
       composer(active);
+      const enteringMap = ui.world.hidden;
       show(ui.world);
+      if (standalone && enteringMap) setImmersive(true);
       status('Chat grup gagal dimuat.');
     });
   }
