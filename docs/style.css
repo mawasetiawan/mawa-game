@@ -36,3 +36,9 @@ h2{font-size:1rem}
 @keyframes spin{to{transform:rotate(1turn)}}
 @media(max-width:700px){.lobby{grid-template-columns:1fr}.account span{max-width:26vw}.world{min-height:360px}.hero{min-height:25svh}}
 @media(prefers-reduced-motion:reduce){.spinner{animation:none}}
+.party{width:min(100%,35rem);display:grid;gap:.65rem}
+.party ul{list-style:none;padding:0;display:grid;gap:.4rem;max-height:35svh;overflow:auto}
+.party .player{padding:.4rem .55rem;background:#16283b;border-radius:.5rem}
+.party .role{margin-left:auto;color:#acd6ff;font-size:.85rem}
+.party-actions{display:flex;flex-wrap:wrap;gap:.5rem}
+#partyHint{color:#c7d9e9}

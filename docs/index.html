@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>Mawa Game</title>
-<link rel="stylesheet" href="./style.css?v=787fc5d">
+<link rel="stylesheet" href="./style.css?v=party1">
 </head>
 <body>
 <main>
@@ -15,19 +15,26 @@
     <button id="login" disabled>Masuk dengan Google</button>
   </section>
   <section id="loading" class="center" hidden aria-live="polite">
-    <span class="spinner" aria-hidden="true"></span><h1>Memuat game</h1><p>Menyiapkan koneksi lobby…</p>
+    <span class="spinner" aria-hidden="true"></span><h1>Memuat game</h1><p id="loadingText">Menyiapkan koneksi lobby…</p>
   </section>
   <section id="menu" class="lobby" hidden>
-    <div class="hero panel"><h1>Menu Utama</h1><button id="play">Buka Map</button></div>
+    <div class="hero panel">
+      <h1>Menu Utama</h1>
+      <button id="createParty">Buat Party</button>
+      <section id="party" class="party" hidden aria-label="Party">
+        <h2 id="partyTitle">Party</h2><ul id="roster"></ul><p id="partyHint"></p>
+        <div class="party-actions"><button id="play" hidden>Masuk ke Map</button><button id="leaveParty">Keluar Party</button></div>
+      </section>
+    </div>
     <aside class="panel dock" aria-label="Pemain online">
       <h2>Pemain online <span id="count"></span></h2>
       <ul id="players"></ul>
-      <div id="invitations" hidden><h2>Undangan map</h2><ul id="invites"></ul></div>
+      <div id="invitations" hidden><h2>Undangan party</h2><ul id="invites"></ul></div>
     </aside>
   </section>
   <section id="world" class="world" hidden>
     <div class="map" aria-label="Map 3D kosong"><div class="ground"></div></div>
-    <div class="world-toolbar"><button id="back">Menu Utama</button><span>Map Kosong</span></div>
+    <div class="world-toolbar"><button id="back">Keluar dari Map</button><span id="mapTitle">Map Kosong</span></div>
     <aside class="chat panel" aria-label="Chat grup">
       <h2>Chat grup</h2><ol id="messages" aria-live="polite" aria-relevant="additions"></ol>
       <form id="composer"><input id="message" aria-label="Pesan" placeholder="Tulis pesan…" maxlength="500" required autocomplete="off"><button id="send" disabled>Kirim</button></form>
@@ -35,6 +42,6 @@
   </section>
   <p id="status" role="status"></p>
 </main>
-<script type="module" src="./app.mjs?v=787fc5d"></script>
+<script type="module" src="./app.mjs?v=party1"></script>
 </body>
 </html>

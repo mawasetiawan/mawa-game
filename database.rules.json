@@ -92,6 +92,87 @@
           }
         }
       }
+    },
+    "partySeats": {
+      "$uid": {
+        ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.uid == $uid",
+        ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.uid == $uid && (!data.exists() || newData.val() == data.val() || !newData.parent().parent().child('partyRooms').child(data.val()).child('members').child($uid).exists())",
+        ".validate": "newData.isString() && newData.val().matches(/^[-0-9A-Z_a-z]{20}$/) && newData.parent().parent().child('partyRooms').child(newData.val()).child('members').child($uid).exists()"
+      }
+    },
+    "partyInvites": {
+      "$uid": {
+        ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.uid == $uid",
+        "$party": {
+          ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && ((auth.uid == $uid && !newData.exists()) || (auth.uid != $uid && newData.exists() && newData.parent().parent().parent().child('partyRooms').child($party).child('state').child('host').val() == auth.uid && newData.parent().parent().parent().child('partyRooms').child($party).child('state').child('phase').val() == 'waiting' && newData.parent().parent().parent().child('partySeats').child(auth.uid).val() == $party))",
+          ".validate": "newData.hasChildren(['from', 'name'])",
+          "from": {
+            ".validate": "newData.val() == auth.uid"
+          },
+          "name": {
+            ".validate": "newData.isString() && (auth.token.name == null ? newData.val() == 'Pemain' : newData.val() == auth.token.name)"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "partyRooms": {
+      "$party": {
+        "state": {
+          ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && (root.child('partySeats').child(auth.uid).val() == $party || root.child('partyInvites').child(auth.uid).child($party).exists())",
+          ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && newData.exists() && ((!data.exists() && newData.parent().parent().parent().child('partySeats').child(auth.uid).val() == $party && newData.child('phase').val() == 'waiting') || (data.child('host').val() == auth.uid && data.child('phase').val() != 'closed' && newData.child('host').val() == data.child('host').val() && newData.child('name').val() == data.child('name').val() && (newData.child('phase').val() == 'closed' || (data.child('phase').val() == 'waiting' && newData.child('phase').val() == 'playing' && newData.parent().parent().parent().child('partySeats').child(auth.uid).val() == $party))))",
+          ".validate": "newData.hasChildren(['host', 'name', 'phase'])",
+          "host": {
+            ".validate": "newData.val() == auth.uid"
+          },
+          "name": {
+            ".validate": "newData.isString()"
+          },
+          "phase": {
+            ".validate": "newData.isString()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "members": {
+          ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && root.child('partySeats').child(auth.uid).val() == $party",
+          "$uid": {
+            ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.uid == $uid && ((newData.exists() && !data.exists() && newData.parent().parent().parent().parent().child('partySeats').child(auth.uid).val() == $party && newData.parent().parent().parent().parent().child('partyRooms').child($party).child('state').child('phase').val() == 'waiting' && (newData.parent().parent().parent().parent().child('partyRooms').child($party).child('state').child('host').val() == auth.uid || (root.child('partyInvites').child(auth.uid).child($party).exists() && root.child('partyRooms').child($party).child('state').child('phase').val() == 'waiting'))) || (!newData.exists() && newData.parent().parent().parent().parent().child('partySeats').child(auth.uid).val() != $party))",
+            ".validate": "newData.hasChildren(['name', 'photo'])",
+            "name": {
+              ".validate": "newData.isString() && (auth.token.name == null ? newData.val() == 'Pemain' : newData.val() == auth.token.name)"
+            },
+            "photo": {
+              ".validate": "newData.isString() && newData.val().length <= 1024"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "messages": {
+          ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && root.child('partySeats').child(auth.uid).val() == $party && root.child('partyRooms').child($party).child('state').child('phase').val() == 'playing' && query.orderByKey && query.limitToLast > 0 && query.limitToLast <= 100",
+          "$messageId": {
+            ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && root.child('partySeats').child(auth.uid).val() == $party && root.child('partyRooms').child($party).child('state').child('phase').val() == 'playing' && !data.exists() && newData.exists() && $messageId.matches(/^[-0-9A-Z_a-z]{20}$/)",
+            ".validate": "newData.hasChildren(['uid', 'name', 'text'])",
+            "uid": {
+              ".validate": "newData.val() == auth.uid"
+            },
+            "name": {
+              ".validate": "newData.isString() && (auth.token.name == null ? newData.val() == 'Pemain' : newData.val() == auth.token.name)"
+            },
+            "text": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 500"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        }
+      }
     }
   }
 }
