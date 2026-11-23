@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>Mawa Game</title>
-<link rel="stylesheet" href="./style.css?v=fullscreen1">
+<link rel="stylesheet" href="./style.css?v=chatroom1">
 </head>
 <body>
 <main>
@@ -50,13 +50,20 @@
       <h2>Pengaturan Developer</h2>
       <form><div class="developer-fields"></div><button type="submit">Simpan</button><p role="status"></p></form>
     </section>
-    <aside class="chat panel" aria-label="Chat grup">
-      <h2>Chat grup</h2><ol id="messages" aria-live="polite" aria-relevant="additions"></ol>
-      <form id="composer"><input id="message" aria-label="Pesan" placeholder="Tulis pesan…" maxlength="500" required autocomplete="off"><button id="send" disabled>Kirim</button></form>
-    </aside>
+    <section id="chat" class="panel chat" aria-label="Chat Room">
+<ol id="messages" role="log" aria-label="Riwayat chat room" aria-relevant="additions"></ol>
+<form id="composer">
+<textarea id="message" rows="1" required maxlength="500" enterkeyhint="send" placeholder="Tulis pesan…" aria-label="Pesan"></textarea>
+<button id="send" type="submit" aria-label="Kirim" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 4 18 8-18 8 3-8-3-8zm3 8h15"/></svg></button>
+<button id="chatToggle" type="button" aria-expanded="false" aria-controls="messages message send" aria-label="Open Chat">
+<svg class="closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 9h8m-8 4h6m7-8v12a2 2 0 0 1-2 2H7l-4 3V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+<svg class="opened" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg><span>Open Chat</span>
+</button>
+</form>
+</section>
   </section>
   <p id="status" role="status"></p>
 </main>
-<script type="module" src="./app.mjs?v=fullscreen1"></script>
+<script type="module" src="./app.mjs?v=chatroom1"></script>
 </body>
 </html>

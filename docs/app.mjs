@@ -99,9 +99,50 @@ async function start() {
     ui.world.addEventListener(name, stopBrowserGesture);
   }
 
-  function composer(active) {
-    ui.send.disabled = !active?.connected || !active.chatReady || active.sending === true;
+  let composerFrame;
+  function resizeComposer() {
+    cancelAnimationFrame(composerFrame);
+    if (!ui.chat.hasAttribute('data-open')) return;
+    composerFrame = requestAnimationFrame(() => {
+      ui.message.style.height = 'auto';
+      ui.message.style.height = Math.min(100, Math.max(44, ui.message.scrollHeight)) + 'px';
+    });
   }
+
+  function composer(active) {
+    const hasText = Boolean(ui.message.value.trim());
+    ui.chat.toggleAttribute('data-composing', hasText);
+    ui.send.disabled = !hasText || !active?.connected || !active.chatReady || active.sending === true;
+    resizeComposer();
+  }
+
+  function setChat(open) {
+    ui.chat.toggleAttribute('data-open', open);
+    ui.chatToggle.setAttribute('aria-expanded', String(open));
+    ui.chatToggle.setAttribute('aria-label', open ? 'Close Chat' : 'Open Chat');
+    if (!open) return;
+    ui.message.focus({ preventScroll: true });
+    ui.messages.scrollTop = ui.messages.scrollHeight;
+    composer(session);
+  }
+
+  ui.chatToggle.addEventListener('click', () => setChat(!ui.chat.hasAttribute('data-open')));
+  ui.message.addEventListener('input', () => composer(session));
+  ui.chat.addEventListener('transitionend', event => {
+    if (event.target === ui.chat && event.propertyName === 'width') resizeComposer();
+  });
+  window.addEventListener('resize', resizeComposer);
+  ui.message.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    if (!ui.send.disabled) ui.composer.requestSubmit();
+  });
+  ui.chat.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !ui.chat.hasAttribute('data-open')) return;
+    event.preventDefault();
+    setChat(false);
+    ui.chatToggle.focus();
+  });
 
   function closeMap(active) {
     if (fullscreenActive()) {
@@ -118,6 +159,7 @@ async function start() {
     active.chatReady = false;
     ui.messages.replaceChildren();
     ui.message.value = '';
+    setChat(false);
     composer(active);
   }
 
@@ -145,7 +187,7 @@ async function start() {
       ui.mapError.textContent = 'Map 3D gagal dimuat.';
       ui.mapError.hidden = false;
     });
-    active.stopChat = onValue(query(messages, orderByKey(), limitToLast(100)), snapshot => {
+    active.stopChat = onValue(query(messages, orderByKey(), limitToLast(20)), snapshot => {
       if (active !== session || active.messages !== messages) return;
       const nearBottom = ui.messages.scrollHeight - ui.messages.scrollTop - ui.messages.clientHeight < 45;
       const rows = [];
