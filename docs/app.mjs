@@ -313,7 +313,32 @@ async function start() {
     ui.invitations.hidden = !invitations.length;
   }
 
-  bind(ui.login, () => authSdk.signInWithPopup(auth, new authSdk.GoogleAuthProvider()), 'Login Google gagal. Coba lagi.');
+  const gameUrl = new URL('./', window.location.href);
+  ui.gameLink.value = gameUrl.href;
+  const agent = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(agent) && !/CriOS/.test(agent) && gameUrl.protocol === 'https:') {
+    ui.loginChrome.href = 'googlechromes:' + gameUrl.href.slice('https:'.length);
+    ui.loginChrome.hidden = false;
+  }
+
+  ui.login.addEventListener('click', () => ui.loginChoice.showModal());
+  ui.loginOther.addEventListener('click', () => {
+    ui.loginLink.hidden = !ui.loginLink.hidden;
+    ui.loginOther.setAttribute('aria-expanded', String(!ui.loginLink.hidden));
+  });
+  ui.copyGameLink.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(gameUrl.href);
+      ui.copyGameStatus.textContent = 'Link disalin.';
+    } catch {
+      ui.gameLink.select();
+      ui.copyGameStatus.textContent = 'Salin link yang dipilih.';
+    }
+  });
+  bind(ui.loginHere, () => {
+    ui.loginChoice.close();
+    return authSdk.signInWithPopup(auth, new authSdk.GoogleAuthProvider());
+  }, 'Login Google gagal. Coba lagi.');
   bind(ui.logout, async () => {
     if (session?.connected) {
       await session.party.leave();
@@ -335,6 +360,7 @@ async function start() {
     ui.invitations.hidden = true;
     ui.account.hidden = ui.logout.hidden = !user;
     ui.login.disabled = false;
+    if (user && ui.loginChoice.open) ui.loginChoice.close();
     status('');
     ui.loadingText.textContent = 'Menyiapkan koneksi lobby…';
     show(user ? ui.loading : ui.gate);

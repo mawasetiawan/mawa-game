@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>Mawa Game</title>
-<link rel="stylesheet" href="./style.css?v=fullscreen2">
+<link rel="stylesheet" href="./style.css?v=login-choice1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#101e26">
@@ -17,8 +17,22 @@
   <header><a class="brand" href="./">MAWA GAME</a><div id="account" class="account" hidden></div><button id="logout" hidden>Keluar</button></header>
   <section id="gate" class="center panel">
     <h1>Masuk ke Mawa Game</h1>
-    <button id="login" disabled>Masuk dengan Google</button>
+    <button id="login" type="button" aria-haspopup="dialog" aria-controls="loginChoice" disabled>Masuk dengan Google</button>
   </section>
+  <dialog id="loginChoice" class="login-choice panel" aria-labelledby="loginChoiceTitle">
+    <h2 id="loginChoiceTitle">Pilih browser untuk login</h2>
+    <p>Masuk dengan akun Google di browser yang ingin kamu pakai untuk bermain.</p>
+    <button id="loginHere" type="button" autofocus>Lanjut di browser ini</button>
+    <a id="loginChrome" hidden>Buka di Google Chrome</a>
+    <button id="loginOther" type="button" aria-expanded="false" aria-controls="loginLink">Pakai browser lain</button>
+    <div id="loginLink" hidden>
+      <label for="gameLink">Buka link ini di browser pilihanmu.</label>
+      <input id="gameLink" type="url" readonly>
+      <button id="copyGameLink" type="button">Salin link</button>
+      <p id="copyGameStatus" role="status"></p>
+    </div>
+    <form method="dialog"><button type="submit">Batal</button></form>
+  </dialog>
   <section id="loading" class="center" hidden aria-live="polite">
     <span class="spinner" aria-hidden="true"></span><h1>Memuat game</h1><p id="loadingText">Menyiapkan koneksi lobby…</p>
   </section>
@@ -80,6 +94,6 @@
   </section>
   <p id="status" role="status"></p>
 </main>
-<script type="module" src="./app.mjs?v=fullscreen2"></script>
+<script type="module" src="./app.mjs?v=login-choice1"></script>
 </body>
 </html>

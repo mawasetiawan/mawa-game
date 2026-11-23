@@ -142,3 +142,14 @@ html.immersive-game,html.immersive-game body{overflow:hidden;overscroll-behavior
 .world.immersive-map .hud-top{left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right))}
 .world.immersive-map .controls{left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right))}
 .world.immersive-map .map-notice{top:calc(max(12px,env(safe-area-inset-top)) + 52px);max-width:min(330px,calc(100% - 32px));z-index:7}
+
+/* Keep browser double-tap zoom off without changing the canvas pinch gesture. */
+html{touch-action:manipulation}
+.login-choice{max-width:min(26rem,calc(100% - 2rem));color:#f3f6ec;background:#13272f;border-color:#a0c2a85c}
+.login-choice::backdrop{background:#09151bc0}
+.login-choice[open],.login-choice #loginLink{display:grid;gap:.65rem}
+.login-choice h2{font-size:1.125rem}
+.login-choice p,.login-choice label{font-size:.875rem}
+.login-choice p:empty{display:none}
+.login-choice a{display:grid;place-items:center;min-height:2.75rem;padding:.45rem .8rem;border:1px solid #385170;border-radius:.55rem;color:inherit;background:#244d77;text-decoration:none;text-align:center}
+.login-choice form{justify-content:flex-end}
