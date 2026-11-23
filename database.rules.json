@@ -1,0 +1,27 @@
+{
+  "rules": {
+    "rooms": {
+      "general": {
+        "messages": {
+          ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && query.orderByKey && query.limitToLast > 0 && query.limitToLast <= 100",
+          "$messageId": {
+            ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && !data.exists() && newData.exists() && $messageId.matches(/^[-0-9A-Z_a-z]{20}$/)",
+            ".validate": "newData.hasChildren(['uid', 'name', 'text'])",
+            "uid": {
+              ".validate": "newData.val() == auth.uid"
+            },
+            "name": {
+              ".validate": "newData.isString() && (auth.token.name == null ? newData.val() == 'Pemain' : newData.val() == auth.token.name)"
+            },
+            "text": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 500"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        }
+      }
+    }
+  }
+}

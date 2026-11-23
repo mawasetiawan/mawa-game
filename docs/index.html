@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Lobby Game</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<main>
+  <header><div><h1>Lobby Game</h1><p>Ruang umum</p></div><button id="logout" hidden>Keluar</button></header>
+  <section id="gate">
+    <h2>Masuk ke lobby</h2>
+    <p>Gunakan akun Google untuk ikut chat.</p>
+    <button id="login" disabled>Masuk dengan Google</button>
+  </section>
+  <section id="room" hidden aria-label="Ruang umum">
+    <p id="member"></p>
+    <ol id="messages" aria-label="Pesan chat" aria-live="polite" aria-relevant="additions"></ol>
+    <form id="composer">
+      <input id="message" aria-label="Pesan" placeholder="Tulis pesan…" maxlength="500" required autocomplete="off">
+      <button id="send" disabled>Kirim</button>
+    </form>
+  </section>
+  <p id="status" role="status">Menyiapkan koneksi…</p>
+</main>
+<script type="module" src="./app.mjs"></script>
+</body>
+</html>
