@@ -316,10 +316,8 @@ async function start() {
   const gameUrl = new URL('./', window.location.href);
   ui.gameLink.value = gameUrl.href;
   if (standalone) {
-    ui.loginChoiceTitle.textContent = 'Masuk ke app Mawa Game';
-    ui.loginChoiceHint.textContent = 'Pilih akun pada jendela Google. Setelah berhasil, game akan membuka lobby di app ini.';
-    ui.loginHere.textContent = 'Lanjut dengan Google';
-    ui.loginOther.hidden = true;
+    ui.loginChoiceHint.textContent = 'Pilih tempat bermain. Login di app ini dan login di browser lain memakai sesi terpisah.';
+    ui.loginHere.textContent = 'Lanjut di app Mawa Game';
     try {
       await authSdk.setPersistence(auth, authSdk.browserLocalPersistence);
     } catch (error) {
@@ -328,7 +326,9 @@ async function start() {
   }
 
   const agent = navigator.userAgent;
-  if (!standalone && /iPhone|iPad|iPod/.test(agent) && !/CriOS/.test(agent) && gameUrl.protocol === 'https:') {
+  const appleMobile = /iPhone|iPad|iPod/.test(agent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (appleMobile && (standalone || !/CriOS/.test(agent)) && gameUrl.protocol === 'https:') {
     ui.loginChrome.href = 'googlechromes:' + gameUrl.href.slice('https:'.length);
     ui.loginChrome.hidden = false;
   }
