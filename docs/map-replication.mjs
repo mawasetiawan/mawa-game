@@ -15,7 +15,15 @@ export function connectMapReplication(data, db, party, uid, signal) {
       let latest;
       player.forEach(connection => { latest = connection.val(); });
       if (latest) {
-        players.set(player.key, latest);
+        const previous = players.get(player.key);
+        if (!previous || previous.x !== latest.x || previous.y !== latest.y ||
+            previous.z !== latest.z || previous.crouch !== latest.crouch) {
+          const now = performance.now();
+          const elapsed = previous ? now - previous.receivedAt : Infinity;
+          const velocity = axis => elapsed >= 40 && elapsed <= 200 ?
+            Math.max(-36, Math.min(36, (latest[axis] - previous[axis]) / (elapsed / 1000))) : 0;
+          players.set(player.key, { ...latest, receivedAt: now, vx: velocity('x'), vz: velocity('z') });
+        }
         next.add(player.key);
       }
     });
@@ -63,6 +71,7 @@ export function connectMapReplication(data, db, party, uid, signal) {
       nextUpdate = now + SEND_INTERVAL;
       void set(connection, pose).catch(error => {
         if (connectedRef !== connection || signal.aborted) return;
+        if (lastSent === key) lastSent = '';
         console.error('Map replication write:', error);
       });
     }

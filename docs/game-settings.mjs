@@ -1,4 +1,4 @@
-export const DEVELOPER_EMAIL = 'mawasetiawan@gmail.com';
+export const DEVELOPER_EMAIL = 'mawadatulsetiawan@gmail.com';
 
 export const fields = {
   zoomMin: { label: 'Zoom minimum', min: 2, max: 16, value: 3 },

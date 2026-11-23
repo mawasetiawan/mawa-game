@@ -1,6 +1,6 @@
-import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel } from './game-settings.mjs?v=1';
+import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel } from './game-settings.mjs?v=2';
 import { firebaseConfig } from './config.mjs';
-import { connectMapReplication } from './map-replication.mjs?v=1';
+import { connectMapReplication } from './map-replication.mjs?v=2';
 import { connectParty } from './party.mjs?v=1';
 
 const ui = Object.fromEntries([...document.querySelectorAll('[id]')].map(node => [node.id, node]));
@@ -70,11 +70,45 @@ async function start() {
     Object.assign(settings, parseSettings(snapshot.val()));
   }, error => console.error('Settings read:', error));
 
+  const fullscreen = ui.fullscreen;
+  const fullscreenActive = () => document.fullscreenElement === ui.world || document.webkitFullscreenElement === ui.world;
+  function updateFullscreen() {
+    fullscreen.textContent = fullscreenActive() ? 'Keluar Fullscreen' : 'Fullscreen';
+    fullscreen.setAttribute('aria-pressed', String(fullscreenActive()));
+  }
+  for (const name of ['fullscreenchange', 'webkitfullscreenchange']) {
+    document.addEventListener(name, updateFullscreen);
+  }
+  fullscreen.addEventListener('click', async () => {
+    try {
+      if (fullscreenActive()) {
+        await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+        return;
+      }
+      const request = ui.world.requestFullscreen || ui.world.webkitRequestFullscreen;
+      if (request) await request.call(ui.world);
+      else throw new Error('Fullscreen unavailable');
+    } catch {
+      ui.mapNotice.textContent = 'Fullscreen tidak tersedia di browser ini.';
+    }
+  });
+  function stopBrowserGesture(event) {
+    if (!event.target.closest('input, textarea, [contenteditable]')) event.preventDefault();
+  }
+  for (const name of ['selectstart', 'contextmenu', 'dragstart', 'copy']) {
+    ui.world.addEventListener(name, stopBrowserGesture);
+  }
+
   function composer(active) {
     ui.send.disabled = !active?.connected || !active.chatReady || active.sending === true;
   }
 
   function closeMap(active) {
+    if (fullscreenActive()) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) Promise.resolve(exit.call(document)).catch(console.warn);
+    }
+    ui.mapNotice.textContent = '';
     active.exploration?.abort();
     active.exploration = null;
     ui.mapError.hidden = true;
@@ -100,7 +134,7 @@ async function start() {
     if (active.user.emailVerified && active.user.email === DEVELOPER_EMAIL) {
       mountDeveloperPanel(ui.world, next => set(settingsRef, next), settings, exploration.signal);
     }
-    import('./explore.mjs?v=3').then(({ mountExploration }) => {
+    import('./explore.mjs?v=4').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
       return mountExploration(ui.world, exploration.signal, replication, settings);

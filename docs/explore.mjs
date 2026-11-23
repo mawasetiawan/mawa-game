@@ -181,7 +181,7 @@ export async function mountExploration(world, signal, replication, settings) {
     capsule.scale.y = scale;
     capsule.position.set(actor.x, actor.y + 0.9 * scale, actor.z);
     replication.publish(actor, now);
-    const blend = 1 - Math.exp(-16 * dt);
+    const blend = 1 - Math.exp(-24 * dt);
     for (const [id, pose] of replication.players) {
       let mesh = remoteCapsules.get(id);
       const height = pose.crouch ? 0.62 : 1;
@@ -192,10 +192,15 @@ export async function mountExploration(world, signal, replication, settings) {
         remoteCapsules.set(id, mesh);
         scene.add(mesh);
       }
+      // Predict briefly while snapshots are arriving, then settle at the last position.
+      const age = Math.max(0, now - pose.receivedAt);
+      const lead = age <= 80 ? age : Math.max(0, 160 - age);
+      const predictedX = THREE.MathUtils.clamp(pose.x + pose.vx * lead / 1000, -49, 49);
+      const predictedZ = THREE.MathUtils.clamp(pose.z + pose.vz * lead / 1000, -49, 49);
       mesh.scale.y = THREE.MathUtils.lerp(mesh.scale.y, height, blend);
-      mesh.position.x = THREE.MathUtils.lerp(mesh.position.x, pose.x, blend);
+      mesh.position.x = THREE.MathUtils.lerp(mesh.position.x, predictedX, blend);
       mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, pose.y + 0.9 * mesh.scale.y, blend);
-      mesh.position.z = THREE.MathUtils.lerp(mesh.position.z, pose.z, blend);
+      mesh.position.z = THREE.MathUtils.lerp(mesh.position.z, predictedZ, blend);
     }
     for (const [id, mesh] of remoteCapsules) {
       if (replication.players.has(id)) continue;

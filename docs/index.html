@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>Mawa Game</title>
-<link rel="stylesheet" href="./style.css?v=orbit1">
+<link rel="stylesheet" href="./style.css?v=fullscreen1">
 </head>
 <body>
 <main>
@@ -34,8 +34,9 @@
   </section>
   <section id="world" class="world" hidden>
     <canvas class="map" aria-label="Map eksplorasi 3D"></canvas>
+    <p id="mapNotice" class="map-notice" role="status"></p>
     <p id="mapError" class="map-error" role="status" hidden></p>
-    <div class="world-toolbar"><button id="back">Keluar dari Map</button><span id="mapTitle">Map Kosong</span><button id="openDeveloper" type="button" aria-controls="developerPanel" aria-expanded="false" hidden>Developer</button></div>
+    <div class="world-toolbar"><button id="back">Keluar dari Map</button><span id="mapTitle">Map Kosong</span><button id="fullscreen" type="button" aria-pressed="false">Fullscreen</button><button id="openDeveloper" type="button" aria-controls="developerPanel" aria-expanded="false" hidden>Developer</button></div>
     <div class="controls" aria-label="Kontrol eksplorasi">
       <div id="joystick" class="joystick" aria-label="Joystick gerak"><span aria-hidden="true"></span></div>
       <div id="actions" class="actions" data-mode="exploration" aria-label="Aksi eksplorasi">
@@ -56,6 +57,6 @@
   </section>
   <p id="status" role="status"></p>
 </main>
-<script type="module" src="./app.mjs?v=orbit1"></script>
+<script type="module" src="./app.mjs?v=fullscreen1"></script>
 </body>
 </html>
