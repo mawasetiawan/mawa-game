@@ -4,26 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>Lobby Game</title>
+<title>Mawa Game</title>
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <main>
-  <header><div><h1>Lobby Game</h1><p>Ruang umum</p></div><button id="logout" hidden>Keluar</button></header>
-  <section id="gate">
-    <h2>Masuk ke lobby</h2>
-    <p>Gunakan akun Google untuk ikut chat.</p>
+  <header><a class="brand" href="./">MAWA GAME</a><div id="account" class="account" hidden></div><button id="logout" hidden>Keluar</button></header>
+  <section id="gate" class="center panel">
+    <h1>Masuk ke Mawa Game</h1>
     <button id="login" disabled>Masuk dengan Google</button>
   </section>
-  <section id="room" hidden aria-label="Ruang umum">
-    <p id="member"></p>
-    <ol id="messages" aria-label="Pesan chat" aria-live="polite" aria-relevant="additions"></ol>
-    <form id="composer">
-      <input id="message" aria-label="Pesan" placeholder="Tulis pesan…" maxlength="500" required autocomplete="off">
-      <button id="send" disabled>Kirim</button>
-    </form>
+  <section id="loading" class="center" hidden aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span><h1>Memuat game</h1><p>Menyiapkan koneksi lobby…</p>
   </section>
-  <p id="status" role="status">Menyiapkan koneksi…</p>
+  <section id="menu" class="lobby" hidden>
+    <div class="hero panel"><h1>Menu Utama</h1><button id="play">Buka Map</button></div>
+    <aside class="panel dock" aria-label="Pemain online">
+      <h2>Pemain online <span id="count"></span></h2>
+      <ul id="players"></ul>
+      <div id="invitations" hidden><h2>Undangan map</h2><ul id="invites"></ul></div>
+    </aside>
+  </section>
+  <section id="world" class="world" hidden>
+    <div class="map" aria-label="Map 3D kosong"><div class="ground"></div></div>
+    <div class="world-toolbar"><button id="back">Menu Utama</button><span>Map Kosong</span></div>
+    <aside class="chat panel" aria-label="Chat grup">
+      <h2>Chat grup</h2><ol id="messages" aria-live="polite" aria-relevant="additions"></ol>
+      <form id="composer"><input id="message" aria-label="Pesan" placeholder="Tulis pesan…" maxlength="500" required autocomplete="off"><button id="send" disabled>Kirim</button></form>
+    </aside>
+  </section>
+  <p id="status" role="status"></p>
 </main>
 <script type="module" src="./app.mjs"></script>
 </body>

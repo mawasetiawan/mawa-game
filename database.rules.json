@@ -22,6 +22,76 @@
           }
         }
       }
+    },
+    "presence": {
+      ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com'",
+      "$uid": {
+        "$connection": {
+          ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.uid == $uid",
+          ".validate": "newData.hasChildren(['name', 'photo'])",
+          "name": {
+            ".validate": "newData.isString() && (auth.token.name == null ? newData.val() == 'Pemain' : newData.val() == auth.token.name)"
+          },
+          "photo": {
+            ".validate": "newData.isString() && newData.val().length <= 1024"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "invites": {
+      "$uid": {
+        ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.uid == $uid",
+        "$map": {
+          ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && $uid != auth.uid && root.child('maps').child($map).child('meta').child('host').val() == auth.uid && newData.exists()",
+          ".validate": "newData.hasChildren(['from'])",
+          "from": {
+            ".validate": "newData.val() == auth.uid"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "maps": {
+      "$map": {
+        "meta": {
+          ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && (root.child('maps').child($map).child('meta').child('host').val() == auth.uid || root.child('invites').child(auth.uid).child($map).exists())",
+          ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && !data.exists() && newData.exists()",
+          ".validate": "newData.hasChildren(['host', 'name'])",
+          "host": {
+            ".validate": "newData.val() == auth.uid"
+          },
+          "name": {
+            ".validate": "newData.isString() && (auth.token.name == null ? newData.val() == 'Pemain' : newData.val() == auth.token.name)"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "messages": {
+          ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && (root.child('maps').child($map).child('meta').child('host').val() == auth.uid || root.child('invites').child(auth.uid).child($map).exists()) && query.orderByKey && query.limitToLast > 0 && query.limitToLast <= 100",
+          "$messageId": {
+            ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && (root.child('maps').child($map).child('meta').child('host').val() == auth.uid || root.child('invites').child(auth.uid).child($map).exists()) && !data.exists() && newData.exists() && $messageId.matches(/^[-0-9A-Z_a-z]{20}$/)",
+            ".validate": "newData.hasChildren(['uid', 'name', 'text'])",
+            "uid": {
+              ".validate": "newData.val() == auth.uid"
+            },
+            "name": {
+              ".validate": "newData.isString() && (auth.token.name == null ? newData.val() == 'Pemain' : newData.val() == auth.token.name)"
+            },
+            "text": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 500"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        }
+      }
     }
   }
 }
