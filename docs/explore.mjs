@@ -1,6 +1,6 @@
-import { createMovement, stepMovement, Stance } from './movement.mjs?v=1';
+import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=1';
 
-export async function mountExploration(world, signal) {
+export async function mountExploration(world, signal, replication) {
   const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js');
   if (signal.aborted) return;
   const canvas = world.querySelector('canvas');
@@ -22,13 +22,21 @@ export async function mountExploration(world, signal) {
   const grid = new THREE.GridHelper(100, 100, 0x7ca9b8, 0x506b75);
   grid.position.y = 0.015;
   scene.add(grid);
-  const capsule = new THREE.Mesh(new THREE.CapsuleGeometry(0.36, 1.08, 8, 16), new THREE.MeshStandardMaterial({color: 0x8ed4ff}));
+  const capsuleGeometry = new THREE.CapsuleGeometry(0.36, 1.08, 8, 16);
+  const localMaterial = new THREE.MeshStandardMaterial({color: 0x8ed4ff});
+  const remoteMaterial = new THREE.MeshStandardMaterial({color: 0xffb86c});
+  const capsule = new THREE.Mesh(capsuleGeometry, localMaterial);
+  const remoteCapsules = new Map();
   scene.add(capsule);
   const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 85);
   const target = new THREE.Vector3(0, 1, 0);
   const desiredTarget = new THREE.Vector3();
   const cameraOffset = new THREE.Vector3();
   const actor = createMovement();
+  const spawnAngle = replication.spawnAngle / 4294967296 * Math.PI * 2;
+  actor.x = Math.cos(spawnAngle) * 3;
+  actor.z = Math.sin(spawnAngle) * 3;
+  target.set(actor.x, 1, actor.z);
   const held = new Set();
   const handled = new Set(['KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','KeyC','Space','KeyE','KeyF']);
   const input = {x:0,z:0,walk:false,sprint:false,jump:false,crouch:false,dash:false};
@@ -36,6 +44,7 @@ export async function mountExploration(world, signal) {
   let pointer = null, sprintPointer = null, stickX = 0, stickZ = 0, frame;
   let previous = performance.now();
   let scale = 1;
+  let jumpUntil = 0;
 
   function interact() {
     world.dispatchEvent(new CustomEvent('player-interact', { bubbles: true, detail: { x: actor.x, y: actor.y, z: actor.z } }));
@@ -47,6 +56,7 @@ export async function mountExploration(world, signal) {
     sprintPointer = null;
     stickX = stickZ = 0;
     input.jump = input.crouch = input.dash = false;
+    jumpUntil = 0;
     lastShift = -Infinity;
     thumb.style.transform = '';
   }
@@ -65,10 +75,12 @@ export async function mountExploration(world, signal) {
   world.addEventListener('focusin', event => {
     if (event.target.matches('input, textarea, [contenteditable]')) resetControls();
   }, options);
+  const requestJump = () => { jumpUntil = performance.now() + 140; };
+  const hasMoveInput = () => pointer !== null || ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(key => held.has(key));
   window.addEventListener('keydown', event => {
     if (!handled.has(event.code) || event.altKey || event.ctrlKey || event.metaKey ||
       event.target.matches?.('input, textarea, [contenteditable]') ||
-      (event.code === 'Space' && event.target.closest?.('button'))) return;
+      (event.code === 'Space' && event.target.closest?.('button') && !hasMoveInput())) return;
     event.preventDefault();
     if (event.repeat || held.has(event.code)) return;
     const wasSprinting = held.has('ShiftLeft') || held.has('ShiftRight');
@@ -81,7 +93,7 @@ export async function mountExploration(world, signal) {
       } else lastShift = now;
     }
     if (event.code === 'KeyC') input.crouch = true;
-    if (event.code === 'Space') input.jump = true;
+    if (event.code === 'Space') requestJump();
     if (event.code === 'KeyE' || event.code === 'KeyF') interact();
   }, options);
   window.addEventListener('keyup', event => held.delete(event.code), options);
@@ -99,7 +111,7 @@ export async function mountExploration(world, signal) {
   }
 
   stick.addEventListener('pointerdown', event => {
-    if (pointer !== null || event.button !== 0) return;
+    if (pointer !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
     event.preventDefault();
     pointer = event.pointerId;
     stick.setPointerCapture(pointer);
@@ -121,13 +133,20 @@ export async function mountExploration(world, signal) {
   const walk = actions.querySelector('[data-action="walk"]');
   const sprint = actions.querySelector('[data-action="sprint"]');
   const interaction = actions.querySelector('[data-action="interact"]');
-  jump.addEventListener('click', () => { input.jump = true; }, options);
+  jump.addEventListener('pointerdown', event => {
+    if ((event.pointerType === 'mouse' && event.button !== 0)) return;
+    event.preventDefault();
+    requestJump();
+  }, options);
+  jump.addEventListener('click', event => {
+    if (event.detail === 0 && !event.pointerType) requestJump();
+  }, options);
   walk.addEventListener('click', () => {
     input.walk = !input.walk;
     walk.setAttribute('aria-pressed', String(input.walk));
   }, options);
   sprint.addEventListener('pointerdown', event => {
-    if (sprintPointer !== null || event.button !== 0) return;
+    if (sprintPointer !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
     sprintPointer = event.pointerId;
     sprint.setPointerCapture(sprintPointer);
   }, options);
@@ -147,6 +166,8 @@ export async function mountExploration(world, signal) {
     input.x = Number(held.has('KeyD')) - Number(held.has('KeyA')) + stickX;
     input.z = Number(held.has('KeyS')) - Number(held.has('KeyW')) + stickZ;
     input.sprint = sprintPointer !== null || held.has('ShiftLeft') || held.has('ShiftRight');
+    input.jump = jumpUntil >= now && actor.state === ActorState.GROUNDED && actor.dashLeft === 0 && !input.dash;
+    if (input.jump) jumpUntil = 0;
     stepMovement(actor, input, dt);
     input.jump = input.crouch = input.dash = false;
     actor.x = THREE.MathUtils.clamp(actor.x, -49, 49);
@@ -154,6 +175,28 @@ export async function mountExploration(world, signal) {
     scale = THREE.MathUtils.lerp(scale, actor.stance === Stance.CROUCH ? 0.62 : 1, 1 - Math.exp(-18 * dt));
     capsule.scale.y = scale;
     capsule.position.set(actor.x, actor.y + 0.9 * scale, actor.z);
+    replication.publish(actor, now);
+    const blend = 1 - Math.exp(-16 * dt);
+    for (const [id, pose] of replication.players) {
+      let mesh = remoteCapsules.get(id);
+      const height = pose.crouch ? 0.62 : 1;
+      if (!mesh) {
+        mesh = new THREE.Mesh(capsuleGeometry, remoteMaterial);
+        mesh.position.set(pose.x, pose.y + 0.9 * height, pose.z);
+        mesh.scale.y = height;
+        remoteCapsules.set(id, mesh);
+        scene.add(mesh);
+      }
+      mesh.scale.y = THREE.MathUtils.lerp(mesh.scale.y, height, blend);
+      mesh.position.x = THREE.MathUtils.lerp(mesh.position.x, pose.x, blend);
+      mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, pose.y + 0.9 * mesh.scale.y, blend);
+      mesh.position.z = THREE.MathUtils.lerp(mesh.position.z, pose.z, blend);
+    }
+    for (const [id, mesh] of remoteCapsules) {
+      if (replication.players.has(id)) continue;
+      scene.remove(mesh);
+      remoteCapsules.delete(id);
+    }
     desiredTarget.set(actor.x, actor.y + 0.95, actor.z);
     target.lerp(desiredTarget, 1 - Math.exp(-12 * dt));
     cameraOffset.set(0, 3.2, camera.aspect < 0.9 ? 8.5 : 6.7);
@@ -166,10 +209,13 @@ export async function mountExploration(world, signal) {
   signal.addEventListener('abort', () => {
     cancelAnimationFrame(frame);
     observer.disconnect();
-    scene.traverse(object => {
-      object.geometry?.dispose();
-      object.material?.dispose();
-    });
+    floor.geometry.dispose();
+    floor.material.dispose();
+    grid.geometry.dispose();
+    grid.material.dispose();
+    capsuleGeometry.dispose();
+    localMaterial.dispose();
+    remoteMaterial.dispose();
     renderer.dispose();
     walk.setAttribute('aria-pressed', 'false');
     resetControls();

@@ -171,6 +171,30 @@
               ".validate": false
             }
           }
+        },
+        "positions": {
+          ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && root.child('partySeats').child(auth.uid).val() == $party && root.child('partyRooms').child($party).child('state').child('phase').val() == 'playing'",
+          "$uid": {
+            "$connection": {
+              ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.uid == $uid && $connection.matches(/^[-0-9A-Z_a-z]{20}$/) && (!newData.exists() || (root.child('partySeats').child(auth.uid).val() == $party && root.child('partyRooms').child($party).child('state').child('phase').val() == 'playing'))",
+              ".validate": "newData.hasChildren(['x', 'y', 'z', 'crouch'])",
+              "x": {
+                ".validate": "newData.isNumber() && newData.val() >= -49 && newData.val() <= 49"
+              },
+              "y": {
+                ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 4"
+              },
+              "z": {
+                ".validate": "newData.isNumber() && newData.val() >= -49 && newData.val() <= 49"
+              },
+              "crouch": {
+                ".validate": "newData.isBoolean()"
+              },
+              "$other": {
+                ".validate": false
+              }
+            }
+          }
         }
       }
     }

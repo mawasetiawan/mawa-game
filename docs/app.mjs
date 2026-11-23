@@ -1,4 +1,5 @@
 import { firebaseConfig } from './config.mjs';
+import { connectMapReplication } from './map-replication.mjs?v=1';
 import { connectParty } from './party.mjs?v=1';
 
 const ui = Object.fromEntries([...document.querySelectorAll('[id]')].map(node => [node.id, node]));
@@ -81,10 +82,13 @@ async function start() {
     active.messages = messages;
     const exploration = new AbortController();
     active.exploration = exploration;
-    import('./explore.mjs?v=1').then(({ mountExploration }) =>
-      mountExploration(ui.world, exploration.signal)
-    ).catch(error => {
+    import('./explore.mjs?v=2').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
+      const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
+      return mountExploration(ui.world, exploration.signal, replication);
+    }).catch(error => {
+      if (exploration.signal.aborted) return;
+      exploration.abort();
       console.error(error);
       ui.mapError.textContent = 'Map 3D gagal dimuat.';
       ui.mapError.hidden = false;
