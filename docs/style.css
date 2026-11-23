@@ -98,3 +98,40 @@ canvas.map:active{cursor:grabbing}
 .chat svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .chat button{display:inline-flex;align-items:center;justify-content:center;gap:7px}
 .developer-panel{z-index:5}
+
+/* Gameplay overlay follows the approved HUD preview. */
+.gameplay-hud{position:absolute;inset:0;z-index:2;pointer-events:none;color:#f3f6ec}
+.gameplay-hud button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 13px;border:1px solid #d5ede235;background:#162c32e8;border-radius:14px;color:inherit}
+.gameplay-hud button:hover,.gameplay-hud button[aria-expanded=true],.gameplay-hud button[aria-pressed=true]{background:#375a52;border-color:#d4efaa8c}
+.gameplay-hud svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hud-top{position:absolute;left:clamp(12px,3vw,42px);right:clamp(12px,3vw,42px);top:max(12px,env(safe-area-inset-top));display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.hud-tag{border:1px solid #d5ede235;background:#173038dd;border-radius:17px;padding:10px 15px;box-shadow:0 8px 24px #12232538}
+.hud-tag small{color:#def0ae;font-weight:750;letter-spacing:.13em;font-size:10px}
+.hud-tag h2{font-size:clamp(15px,2.5vw,22px);white-space:nowrap}
+.hud-compass{position:absolute;left:50%;transform:translateX(-50%);top:6px;color:#fff6dc;letter-spacing:.24em;font-size:12px;text-shadow:0 2px 8px #1b3339}
+.gameplay-hud .world-toolbar{position:static;pointer-events:auto;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.gameplay-hud .controls{inset:auto clamp(12px,3vw,42px) max(15px,env(safe-area-inset-bottom))}
+.gameplay-hud .joystick{width:clamp(80px,16vw,124px);background:#203b3d80;border:2px solid #e0eee05c;box-shadow:inset 0 0 0 8px #e2efd618}
+.gameplay-hud .joystick span{width:45%;background:#d9e8bddd;border:3px solid #f5ffe07d;box-shadow:0 4px 15px #101c3269}
+.gameplay-hud .actions{grid-template-columns:repeat(2,minmax(58px,78px));gap:8px}
+.gameplay-hud .actions button{height:clamp(51px,9vw,69px);flex-direction:column;font-size:11px;gap:3px;padding:4px}
+.gameplay-hud .actions button:first-child,.gameplay-hud .save{background:#d4e8a8;color:#1a302a;border-color:#eaffc4}
+.gameplay-hud .chat,.gameplay-hud .developer-panel{pointer-events:auto}
+.gameplay-hud .developer-panel{top:72px;right:clamp(12px,3vw,42px);width:min(370px,calc(100% - 24px));max-height:calc(100% - 90px);padding:0;border:1px solid #a0c2a85c;border-radius:20px;background:#13272ff5;box-shadow:0 16px 42px #101b2aac}
+.gameplay-hud .developer-panel header{display:flex;justify-content:space-between;margin:0;padding:12px 14px;border-bottom:1px solid #a4c4ae34}
+.gameplay-hud .developer-panel h2{font-size:17px}
+.gameplay-hud .developer-panel header p,.gameplay-hud .developer-panel [role=status]{font-size:12px;color:#b8d3be}
+.gameplay-hud .developer-panel form{padding:12px 14px}
+.gameplay-hud .developer-fields details{border:1px solid #b6d2b53a;border-radius:12px;margin-bottom:7px;padding:8px 10px;background:#233941}
+.gameplay-hud .developer-fields details details{background:#1a3038;margin:6px 0 0}
+.gameplay-hud summary{cursor:pointer;font-weight:700;color:#e4efcc}
+.gameplay-hud .developer-fields label{display:flex;justify-content:space-between;align-items:center;gap:7px;margin-top:8px;font-size:13px}
+.gameplay-hud .developer-fields .range-field{display:grid;grid-template-columns:1fr}
+.gameplay-hud .range-field span{display:flex;justify-content:space-between;gap:8px}
+.gameplay-hud .range-field input{width:100%;min-height:24px;padding:0;accent-color:#d2eb9d}
+.gameplay-hud .chat.panel{padding:5px;border:1px solid #d5ede260;background:#14292edb;border-radius:17px}
+.gameplay-hud .chat #chatToggle{background:transparent;border:0}
+.gameplay-hud .chat[data-open] #chatToggle{background:#d5ede216;padding:0}
+.gameplay-hud .chat #send{background:#d4e8a8;color:#1a302a}
+@media(max-width:665px){.hud-compass,.gameplay-hud .world-toolbar button span{display:none}.hud-tag{padding:7px 10px}.gameplay-hud .world-toolbar button{padding:0 8px}.gameplay-hud .developer-panel{top:65px}}
+@media(max-height:530px){.gameplay-hud .joystick{width:80px}}

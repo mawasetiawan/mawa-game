@@ -1,3 +1,4 @@
+import { resolveFov } from './game-settings.mjs?v=3';
 import { bindOrbit } from './orbit.mjs?v=1';
 import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=2';
 
@@ -210,6 +211,11 @@ export async function mountExploration(world, signal, replication, settings) {
     desiredTarget.set(actor.x, actor.y + 0.95, actor.z);
     target.lerp(desiredTarget, 1 - Math.exp(-12 * dt));
     clampDistance();
+    const fov = resolveFov(settings, orbit.distance);
+    if (camera.fov !== fov) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
     const horizontal = Math.cos(orbit.pitch) * orbit.distance;
     cameraOffset.set(sin * horizontal, Math.sin(orbit.pitch) * orbit.distance, cos * horizontal);
     camera.position.copy(target).add(cameraOffset);

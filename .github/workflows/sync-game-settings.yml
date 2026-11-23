@@ -30,7 +30,8 @@ jobs:
           const live = JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/game-settings.json', 'utf8'));
           if (live !== null) {
             const next = parseSettings(live);
-            const matches = Object.keys(fields).every(key => live[key] === next[key]);
+            const matches = Object.keys(fields).every(key => live[key] === next[key] ||
+              (['autoFov', 'baseFov', 'minFov', 'maxFov'].includes(key) && !Object.hasOwn(live, key)));
             if (!matches) throw new Error('Unexpected Firebase settings');
             writeFileSync('docs/settings.json', JSON.stringify(next, null, 2) + '\n');
           }

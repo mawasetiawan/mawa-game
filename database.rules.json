@@ -201,7 +201,7 @@
     "gameSettings": {
       ".read": true,
       ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.token.email_verified == true && auth.token.email == 'mawadatulsetiawan@gmail.com' && newData.exists()",
-      ".validate": "newData.hasChildren([\"zoomMin\",\"zoomMax\",\"orbitSpeed\",\"zoomSpeed\",\"walkSpeed\",\"runSpeed\",\"sprintSpeed\",\"dashSpeed\",\"dashSeconds\",\"jumpSpeed\",\"gravity\",\"invertPitch\",\"invertYaw\",\"invertZoom\"]) && newData.child('zoomMin').val() <= newData.child('zoomMax').val() && newData.child('walkSpeed').val() <= newData.child('runSpeed').val() && newData.child('runSpeed').val() <= newData.child('sprintSpeed').val()",
+      ".validate": "newData.hasChildren([\"zoomMin\",\"zoomMax\",\"orbitSpeed\",\"zoomSpeed\",\"walkSpeed\",\"runSpeed\",\"sprintSpeed\",\"dashSpeed\",\"dashSeconds\",\"jumpSpeed\",\"gravity\",\"invertPitch\",\"invertYaw\",\"invertZoom\"]) && newData.child('zoomMin').val() <= newData.child('zoomMax').val() && newData.child('walkSpeed').val() <= newData.child('runSpeed').val() && newData.child('runSpeed').val() <= newData.child('sprintSpeed').val() && (!newData.child('minFov').exists() || !newData.child('maxFov').exists() || newData.child('minFov').val() <= newData.child('maxFov').val())",
       "zoomMin": {
         ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 16"
       },
@@ -246,6 +246,18 @@
       },
       "$other": {
         ".validate": false
+      },
+      "autoFov": {
+        ".validate": "newData.isBoolean()"
+      },
+      "baseFov": {
+        ".validate": "newData.isNumber() && newData.val() >= 35 && newData.val() <= 95"
+      },
+      "minFov": {
+        ".validate": "newData.isNumber() && newData.val() >= 35 && newData.val() <= 95"
+      },
+      "maxFov": {
+        ".validate": "newData.isNumber() && newData.val() >= 35 && newData.val() <= 95"
       }
     }
   }

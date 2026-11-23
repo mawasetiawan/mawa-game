@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>Mawa Game</title>
-<link rel="stylesheet" href="./style.css?v=chatroom1">
+<link rel="stylesheet" href="./style.css?v=hud2">
 </head>
 <body>
 <main>
@@ -36,19 +36,29 @@
     <canvas class="map" aria-label="Map eksplorasi 3D"></canvas>
     <p id="mapNotice" class="map-notice" role="status"></p>
     <p id="mapError" class="map-error" role="status" hidden></p>
-    <div class="world-toolbar"><button id="back">Keluar dari Map</button><span id="mapTitle">Map Kosong</span><button id="fullscreen" type="button" aria-pressed="false">Fullscreen</button><button id="openDeveloper" type="button" aria-controls="developerPanel" aria-expanded="false" hidden>Developer</button></div>
+    <!-- HUD icons adapted from Tabler Icons (MIT). Copyright (c) 2020 Paweł Kuna. https://github.com/tabler/tabler-icons/blob/main/LICENSE -->
+    <div class="gameplay-hud">
+    <div class="hud-top">
+      <div class="hud-tag"><small>EKSPLORASI</small><h2 id="mapTitle">Map Kosong</h2></div>
+      <div class="hud-compass" aria-hidden="true">· &nbsp; N &nbsp; ·</div>
+      <nav class="world-toolbar" aria-label="Kontrol HUD">
+        <button id="back" type="button" aria-label="Keluar dari Map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg><span>Keluar dari Map</span></button>
+        <button id="openDeveloper" type="button" aria-label="Developer" aria-controls="developerPanel" aria-expanded="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16M8 4v4m8 2v4m-6 2v4"/></svg><span>Developer</span></button>
+        <button id="fullscreen" type="button" aria-label="Fullscreen" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5"/></svg><span>Fullscreen</span></button>
+      </nav>
+    </div>
     <div class="controls" aria-label="Kontrol eksplorasi">
       <div id="joystick" class="joystick" aria-label="Joystick gerak"><span aria-hidden="true"></span></div>
       <div id="actions" class="actions" data-mode="exploration" aria-label="Aksi eksplorasi">
-        <button type="button" data-action="jump">Lompat</button>
-        <button type="button" data-action="walk" aria-pressed="false">Jalan</button>
-        <button type="button" data-action="sprint" aria-label="Sprint, tekan dan tahan">Sprint</button>
-        <button type="button" data-action="interact">Interaksi</button>
+        <button type="button" data-action="jump"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17V4m-5 5 5-5 5 5M5 21h14"/></svg><span>Lompat</span></button>
+        <button type="button" data-action="walk" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="13" cy="4" r="2"/><path d="m7 21 3-5m6 5-2-4-3-3 1-6m-6 6 6-6 4 4h3"/></svg><span>Jalan</span></button>
+        <button type="button" data-action="sprint" aria-label="Sprint, tekan dan tahan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-8 12h6l-1 8 9-12h-6l1-8"/></svg><span>Sprint</span></button>
+        <button type="button" data-action="interact"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 13V5a2 2 0 0 1 4 0v6-2a2 2 0 0 1 4 0v2a2 2 0 0 1 4 0v4a7 7 0 0 1-14 2l-2-4a2 2 0 0 1 4-1"/></svg><span>Interaksi</span></button>
       </div>
     </div>
     <section id="developerPanel" class="developer-panel panel" aria-label="Pengaturan Developer" hidden>
-      <h2>Pengaturan Developer</h2>
-      <form><div class="developer-fields"></div><button type="submit">Simpan</button><p role="status"></p></form>
+      <header><div><h2>Pengaturan Developer</h2><p>Game Master</p></div><button type="button" data-close-developer aria-label="Tutup pengaturan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
+      <form><div class="developer-fields"></div><button class="save" type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h11l3 3v13H4V4h2m2 0v6h8V4m-8 16v-6h8v6"/></svg>Simpan</button><p role="status"></p></form>
     </section>
     <section id="chat" class="panel chat" aria-label="Chat Room">
 <ol id="messages" role="log" aria-label="Riwayat chat room" aria-relevant="additions"></ol>
@@ -61,9 +71,10 @@
 </button>
 </form>
 </section>
+    </div>
   </section>
   <p id="status" role="status"></p>
 </main>
-<script type="module" src="./app.mjs?v=chatroom1"></script>
+<script type="module" src="./app.mjs?v=hud2"></script>
 </body>
 </html>

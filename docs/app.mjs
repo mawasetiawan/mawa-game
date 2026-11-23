@@ -1,4 +1,4 @@
-import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel } from './game-settings.mjs?v=2';
+import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel } from './game-settings.mjs?v=3';
 import { firebaseConfig } from './config.mjs';
 import { connectMapReplication } from './map-replication.mjs?v=2';
 import { connectParty } from './party.mjs?v=1';
@@ -73,7 +73,9 @@ async function start() {
   const fullscreen = ui.fullscreen;
   const fullscreenActive = () => document.fullscreenElement === ui.world || document.webkitFullscreenElement === ui.world;
   function updateFullscreen() {
-    fullscreen.textContent = fullscreenActive() ? 'Keluar Fullscreen' : 'Fullscreen';
+    const label = fullscreenActive() ? 'Keluar Fullscreen' : 'Fullscreen';
+    fullscreen.querySelector('span').textContent = label;
+    fullscreen.setAttribute('aria-label', label);
     fullscreen.setAttribute('aria-pressed', String(fullscreenActive()));
   }
   for (const name of ['fullscreenchange', 'webkitfullscreenchange']) {
@@ -176,7 +178,7 @@ async function start() {
     if (active.user.emailVerified && active.user.email === DEVELOPER_EMAIL) {
       mountDeveloperPanel(ui.world, next => set(settingsRef, next), settings, exploration.signal);
     }
-    import('./explore.mjs?v=4').then(({ mountExploration }) => {
+    import('./explore.mjs?v=5').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
       return mountExploration(ui.world, exploration.signal, replication, settings);

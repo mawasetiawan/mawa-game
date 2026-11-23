@@ -1,6 +1,10 @@
 export const DEVELOPER_EMAIL = 'mawadatulsetiawan@gmail.com';
 
 export const fields = {
+  autoFov: { label: 'FOV mengikuti jarak zoom', value: true },
+  baseFov: { label: 'FOV tetap', min: 35, max: 95, value: 58 },
+  minFov: { label: 'Min FOV · kamera dekat', min: 35, max: 95, value: 46 },
+  maxFov: { label: 'Max FOV · kamera jauh', min: 35, max: 95, value: 73 },
   zoomMin: { label: 'Zoom minimum', min: 2, max: 16, value: 3 },
   zoomMax: { label: 'Zoom maksimum', min: 3, max: 30, value: 14 },
   orbitSpeed: { label: 'Sensitivitas orbit', min: 0.1, max: 3, value: 1 },
@@ -17,6 +21,25 @@ export const fields = {
   invertZoom: { label: 'Invert zoom', value: false }
 };
 
+const categories = {
+  Kamera: {
+    'Field of View': ['autoFov', 'baseFov', 'minFov', 'maxFov'],
+    'Zoom & Orbit': ['zoomMin', 'zoomMax', 'orbitSpeed', 'zoomSpeed'],
+    Invert: ['invertPitch', 'invertYaw', 'invertZoom']
+  },
+  Gerakan: {
+    Kecepatan: ['walkSpeed', 'runSpeed', 'sprintSpeed'],
+    'Dash & Lompat': ['dashSpeed', 'dashSeconds', 'jumpSpeed', 'gravity']
+  }
+};
+
+export function resolveFov(settings, distance) {
+  if (!settings.autoFov) return settings.baseFov;
+  const span = settings.zoomMax - settings.zoomMin;
+  const ratio = span > 0 ? Math.max(0, Math.min(1, (distance - settings.zoomMin) / span)) : 0;
+  return settings.minFov + (settings.maxFov - settings.minFov) * ratio;
+}
+
 export const defaults = Object.freeze(Object.fromEntries(
   Object.entries(fields).map(([key, field]) => [key, field.value])
 ));
@@ -31,6 +54,10 @@ export function parseSettings(values) {
       clean[key] = value;
     }
   }
+  if (clean.minFov > clean.maxFov) {
+    clean.minFov = defaults.minFov;
+    clean.maxFov = defaults.maxFov;
+  }
   if (clean.zoomMin > clean.zoomMax || clean.walkSpeed > clean.runSpeed || clean.runSpeed > clean.sprintSpeed) {
     return { ...defaults };
   }
@@ -44,41 +71,81 @@ export function mountDeveloperPanel(world, save, current, signal) {
   const output = panel.querySelector('[role=status]');
   const group = form.querySelector('.developer-fields');
   const inputs = new Map();
-  for (const [key, field] of Object.entries(fields)) {
-    const label = document.createElement('label');
-    label.textContent = field.label;
-    const input = document.createElement('input');
-    input.type = typeof field.value === 'boolean' ? 'checkbox' : 'number';
-    if (input.type === 'number') {
-      input.min = field.min;
-      input.max = field.max;
-      input.step = 'any';
-      input.required = true;
-    }
-    inputs.set(key, input);
-    label.append(input);
-    group.append(label);
+  function disclosure(parent, name) {
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = name;
+    details.append(summary);
+    parent.append(details);
+    return details;
   }
+
+  for (const [category, sections] of Object.entries(categories)) {
+    const categoryNode = disclosure(group, category);
+    for (const [section, keys] of Object.entries(sections)) {
+      const sectionNode = disclosure(categoryNode, section);
+      for (const key of keys) {
+        const field = fields[key];
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = typeof field.value === 'boolean' ? 'checkbox' : 'range';
+        if (input.type === 'range') {
+          label.className = 'range-field';
+          input.min = field.min;
+          input.max = field.max;
+          input.step = key === 'dashSeconds' ? '0.05' : key.endsWith('Fov') ? '1' : '0.1';
+          const heading = document.createElement('span');
+          const value = document.createElement('output');
+          const updateValue = () => { value.value = input.value + (key.endsWith('Fov') ? '°' : ''); };
+          heading.append(field.label, value);
+          label.append(heading, input);
+          input.addEventListener('input', updateValue, { signal });
+          inputs.set(key, { input, updateValue });
+        } else {
+          label.append(field.label, input);
+          inputs.set(key, { input });
+        }
+        sectionNode.append(label);
+      }
+    }
+  }
+
+  const updateFovFields = () => {
+    const automatic = inputs.get('autoFov').input.checked;
+    inputs.get('baseFov').input.disabled = automatic;
+    inputs.get('minFov').input.disabled = !automatic;
+    inputs.get('maxFov').input.disabled = !automatic;
+  };
+  inputs.get('autoFov').input.addEventListener('change', updateFovFields, { signal });
   const close = () => {
     panel.hidden = true;
     toggle.setAttribute('aria-expanded', 'false');
   };
+  panel.querySelector('[data-close-developer]').addEventListener('click', () => {
+    close();
+    toggle.focus();
+  }, { signal });
   toggle.hidden = false;
   toggle.addEventListener('click', () => {
     if (!panel.hidden) return close();
-    for (const [key, input] of inputs) {
+    for (const [key, { input, updateValue }] of inputs) {
       if (input.type === 'checkbox') input.checked = current[key];
-      else input.value = current[key];
+      else { input.value = current[key]; updateValue(); }
     }
+    updateFovFields();
     output.textContent = '';
     panel.hidden = false;
     toggle.setAttribute('aria-expanded', 'true');
   }, { signal });
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    const next = Object.fromEntries([...inputs].map(([key, input]) => [
+    const next = Object.fromEntries([...inputs].map(([key, { input }]) => [
       key, input.type === 'checkbox' ? input.checked : input.valueAsNumber
     ]));
+    if (next.minFov > next.maxFov) {
+      output.textContent = 'Min FOV harus ≤ Max FOV.';
+      return;
+    }
     if (next.zoomMin > next.zoomMax || next.walkSpeed > next.runSpeed || next.runSpeed > next.sprintSpeed) {
       output.textContent = 'Zoom minimum harus ≤ maksimum. Kecepatan harus berurutan dari jalan, lari, lalu sprint.';
       return;
