@@ -59,6 +59,9 @@ async function start() {
   }
 
   function closeMap(active) {
+    active.exploration?.abort();
+    active.exploration = null;
+    ui.mapError.hidden = true;
     active.stopChat?.();
     active.stopChat = null;
     active.messages = null;
@@ -76,6 +79,16 @@ async function start() {
     show(ui.loading);
     const messages = ref(db, 'partyRooms/' + key + '/messages');
     active.messages = messages;
+    const exploration = new AbortController();
+    active.exploration = exploration;
+    import('./explore.mjs?v=1').then(({ mountExploration }) =>
+      mountExploration(ui.world, exploration.signal)
+    ).catch(error => {
+      if (exploration.signal.aborted) return;
+      console.error(error);
+      ui.mapError.textContent = 'Map 3D gagal dimuat.';
+      ui.mapError.hidden = false;
+    });
     active.stopChat = onValue(query(messages, orderByKey(), limitToLast(100)), snapshot => {
       if (active !== session || active.messages !== messages) return;
       const nearBottom = ui.messages.scrollHeight - ui.messages.scrollTop - ui.messages.clientHeight < 45;

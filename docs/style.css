@@ -23,12 +23,12 @@ h2{font-size:1rem}
 .dock ul{list-style:none;padding:0;display:grid;gap:.5rem;margin:.6rem 0;max-height:40svh;overflow:auto}
 .player button{margin-left:auto}
 .world{position:relative;isolation:isolate;overflow:hidden;min-height:440px;height:calc(100svh - 7rem);border:1px solid #32445b;border-radius:.8rem}
-.map{position:absolute;inset:0;overflow:hidden;perspective:520px;perspective-origin:50% 37%;background:linear-gradient(#111a31,#49728c 55%,#243544)}
-.ground{position:absolute;top:39%;left:50%;width:220vmax;height:180vmax;transform-origin:50% 0;transform:translateX(-50%) rotateX(78deg);background-color:#2b4153;background-image:linear-gradient(#68829566 1px,transparent 1px),linear-gradient(90deg,#68829566 1px,transparent 1px);background-size:52px 52px}
+.map{position:absolute;inset:0;width:100%;height:100%;display:block;background:#48677d}
+.map-error{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;background:#101b2a;padding:.65rem;border-radius:.55rem}
 .world-toolbar,.chat{position:absolute;z-index:1;left:clamp(.55rem,2vw,1rem)}
 .world-toolbar{top:.7rem}
-.chat{bottom:.7rem;width:min(26rem,calc(100% - 1.1rem));padding:.7rem;background:#101b2aed}
-#messages{list-style:none;padding:0;margin:.45rem 0;overflow:auto;height:clamp(5rem,22svh,13rem);overflow-wrap:anywhere}
+.chat{top:3.8rem;width:min(26rem,calc(100% - 1.1rem));padding:.7rem;background:#101b2aed}
+#messages{list-style:none;padding:0;margin:.45rem 0;overflow:auto;height:clamp(3rem,14svh,9rem);overflow-wrap:anywhere}
 #messages li{padding:.2rem 0}
 #messages strong{color:#a9d4ff}
 #status{margin-top:.5rem;color:#bcd9f1;overflow-wrap:anywhere}
@@ -42,3 +42,13 @@ h2{font-size:1rem}
 .party .role{margin-left:auto;color:#acd6ff;font-size:.85rem}
 .party-actions{display:flex;flex-wrap:wrap;gap:.5rem}
 #partyHint{color:#c7d9e9}
+
+.controls{position:absolute;z-index:2;inset:auto clamp(.55rem,2vw,1.4rem) max(.7rem,env(safe-area-inset-bottom));display:flex;justify-content:space-between;align-items:end;gap:.5rem;pointer-events:none}
+.joystick,.actions button{pointer-events:auto;touch-action:none;user-select:none}
+.joystick{width:clamp(5.25rem,18vw,8rem);aspect-ratio:1;display:grid;place-items:center;flex:none;border:2px solid #b7ddff80;border-radius:50%;background:#0d2331a8}
+.joystick span{width:43%;aspect-ratio:1;border-radius:50%;background:#c8e6fa;border:2px solid #f2fbff;pointer-events:none}
+.actions{display:grid;grid-template-columns:repeat(2,minmax(3.6rem,1fr));gap:clamp(.28rem,1vw,.65rem)}
+.actions button{padding:.35rem;min-height:clamp(2.75rem,7vw,3.65rem);font-size:clamp(.72rem,2.5vw,.96rem);background:#193954ed}
+.actions button[aria-pressed=true],.actions button:active{background:#305b84;border-color:#b2deff}
+@media(max-width:700px){.chat{width:min(23rem,calc(100% - 1.1rem))}}
+@media(max-height:540px) and (orientation:landscape){.chat{left:auto;right:.65rem;width:min(16rem,40%);top:.55rem}#messages{height:2.5rem}.joystick{width:5rem}}
