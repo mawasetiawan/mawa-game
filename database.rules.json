@@ -259,6 +259,25 @@
       "maxFov": {
         ".validate": "newData.isNumber() && newData.val() >= 35 && newData.val() <= 95"
       }
+    },
+    "loginHandoffs": {
+      "$session": {
+        ".read": "auth != null && auth.token.firebase.sign_in_provider == 'anonymous' && data.child('owner').val() == auth.uid && data.child('expires').val() > now",
+        ".write": "auth != null && auth.token.firebase.sign_in_provider == 'anonymous' && $session.matches(/^[A-Za-z0-9_-]{43}$/) && ((!data.exists() && newData.hasChildren(['owner', 'expires']) && newData.child('owner').val() == auth.uid && !newData.child('payload').exists()) || (data.child('owner').val() == auth.uid && !newData.exists()))",
+        "owner": {
+          ".validate": "newData.isString()"
+        },
+        "expires": {
+          ".validate": "newData.isNumber() && newData.val() > now && newData.val() <= now + 360000"
+        },
+        "payload": {
+          ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && data.parent().child('owner').exists() && data.parent().child('expires').val() > now && !data.exists() && newData.exists()",
+          ".validate": "newData.isString() && newData.val().length >= 38 && newData.val().length <= 16384 && newData.val().matches(/^[A-Za-z0-9_-]+$/)"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
   }
 }
