@@ -1,10 +1,10 @@
-import { loadDeveloperConfig, mountDeveloperConfigPanel } from './developer-config.mjs?v=2';
+import { loadDeveloperConfig, mountDeveloperConfigPanel } from './developer-config.mjs?v=3';
 import { mountCombatPanel } from './combat.mjs?v=7';
 import { mountCharacterPanel } from './character-editor.mjs?v=8';
 import { mountCameraCuePanel } from './camera-cues.mjs?v=3';
 import { mountHudEditor } from './hud-editor.mjs?v=4';
 import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=3';
-import { defaults, parseSettings, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=apply';
+import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=apply';
 import { createLoginHandoff } from './login-handoff.mjs';
 import { firebaseConfig } from './config.mjs';
 import { connectMapReplication } from './map-replication.mjs?v=4';
@@ -348,6 +348,8 @@ async function start() {
     const characterEditor = mountCharacterPanel(ui.world, exploration.signal, published.character);
     const combat = mountCombatPanel(ui.world, exploration.signal, published.combat, personal.combat,
       next => { personal.combat = next; });
+    const canPublish = active.user.emailVerified === true && active.user.email === DEVELOPER_EMAIL;
+    const publicationRef = ref(db, 'developerConfigPublication');
     mountDeveloperConfigPanel(ui.world, exploration.signal, () => ({
       game: parseSettings(settings),
       camera: parseCamera(getCamera()),
@@ -356,7 +358,10 @@ async function start() {
       hud: hud.snapshot(),
       combat: combat.snapshot(),
       character: characterEditor.snapshot(),
-    }));
+    }), canPublish ? {
+      submit: entry => set(publicationRef, entry),
+      latest: async () => (await get(ref(db, 'developerConfigPublication/id'))).val(),
+    } : undefined);
     mountDeveloperTabs(ui.world, exploration.signal);
     import('./explore.mjs?v=17').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
