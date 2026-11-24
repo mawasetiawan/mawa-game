@@ -174,7 +174,8 @@ async function start() {
       ? ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'].map(row => [...(uppercase ? row.toUpperCase() : row)])
       : ['1234567890', '@#%&*()-_', '.,!?/:+='].map(row => [...row]);
     rows[2].push('⌫');
-    rows.push([keyboardPage === 'letters' ? '123' : 'ABC', '⇧', 'Spasi', 'Tutup']);
+    if (keyboardPage === 'letters') rows[2].unshift('⇧');
+    ui.chatKeyMode.dataset.key = ui.chatKeyMode.textContent = keyboardPage === 'letters' ? '123' : 'ABC';
     ui.chatKeyboard.replaceChildren(...rows.map(keys => {
       const row = document.createElement('div');
       for (const key of keys) {
@@ -193,15 +194,12 @@ async function start() {
     renderKeys();
     ui.message.addEventListener('focus', () => showKeyboard(true));
     ui.message.addEventListener('click', () => showKeyboard(true));
-    ui.chatKeyboard.addEventListener('pointerdown', event => event.preventDefault());
-    ui.chatKeyboard.addEventListener('click', event => {
+    ui.composer.addEventListener('pointerdown', event => {
+      if (event.target.closest('button[data-key]')) event.preventDefault();
+    });
+    ui.composer.addEventListener('click', event => {
       const key = event.target.closest('button')?.dataset.key;
       if (!key) return;
-      if (key === 'Tutup') {
-        showKeyboard(false);
-        ui.chatToggle.focus({ preventScroll: true });
-        return;
-      }
       if (key === '123' || key === 'ABC' || key === '⇧') {
         keyboardPage = key === '123' ? 'symbols' : 'letters';
         uppercase = key === '⇧' && !uppercase;
@@ -253,6 +251,10 @@ async function start() {
   }
 
   ui.chatToggle.addEventListener('click', () => setChat(!ui.chat.hasAttribute('data-open')));
+  ui.chatClose.addEventListener('click', () => {
+    setChat(false);
+    ui.chatToggle.focus({ preventScroll: true });
+  });
   ui.message.addEventListener('input', () => composer(session));
   ui.chat.addEventListener('transitionend', event => {
     if (event.target === ui.chat && event.propertyName === 'width') resizeComposer();
@@ -322,7 +324,7 @@ async function start() {
         row.append(author, document.createTextNode(text));
         rows.push(row);
       });
-      ui.messages.replaceChildren(...rows);
+      ui.messages.replaceChildren(...rows.slice(-3));
       if (nearBottom) ui.messages.scrollTop = ui.messages.scrollHeight;
       active.chatReady = true;
       const enteringMap = ui.world.hidden;
