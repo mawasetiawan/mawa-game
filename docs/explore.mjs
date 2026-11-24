@@ -1,4 +1,4 @@
-import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=3';
+import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=4';
 import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs';
 import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=2';
 import { createCameraRig } from './camera-rig.mjs';

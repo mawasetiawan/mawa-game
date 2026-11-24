@@ -189,7 +189,7 @@ export function mountCombatPanel(world, signal, uid, shared) {
   const spawnTitle = document.createElement('summary');
   spawnTitle.textContent = 'Respawn';
   spawn.append(spawnTitle);
-  field(spawn, 'Waktu respawn (detik)', 'number', () => settings.respawn, value => settings.respawn = value, { min: .5, max: 30, step: .1 });
+  field(spawn, 'Waktu respawn (detik)', 'number', () => settings.respawn, value => settings.respawn = value, { min: .5, max: 30, step: 'any' });
   const readout = document.createElement('p');
   readout.className = 'combat-spawn-readout';
   const refreshSpawn = () => {
@@ -217,9 +217,9 @@ export function mountCombatPanel(world, signal, uid, shared) {
     const number = (label, key, min, max, step) => field(group, label, 'number', () => rule()[key], value => rule()[key] = value, { min, max, step });
     number('Jumlah tahap combo', 'count', 1, comboLimit, 1);
     number('Damage per tahap', 'damage', 1, 100, 1);
-    number('Jangkauan (meter)', 'reach', .6, 5, .1);
+    number('Jangkauan (meter)', 'reach', .6, 5, 'any');
     field(group, 'Efek hit', 'select', () => rule().effect, value => rule().effect = value);
-    number('Durasi efek (detik)', 'seconds', .1, 4, .05);
+    number('Durasi efek (detik)', 'seconds', .1, 4, 'any');
     field(group, 'Camera shake saat terkena', 'checkbox', () => rule().shake, value => rule().shake = value);
     section.append(group);
   }

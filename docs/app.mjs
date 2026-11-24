@@ -1,5 +1,5 @@
 import { loadDeveloperConfig, mountDeveloperConfigPanel } from './developer-config.mjs';
-import { mountCombatPanel } from './combat.mjs?v=3';
+import { mountCombatPanel } from './combat.mjs?v=4';
 import { mountCharacterPanel } from './character-editor.mjs?v=5';
 import { mountCameraCuePanel } from './camera-cues.mjs?v=2';
 import { mountHudEditor } from './hud-editor.mjs?v=3';
@@ -379,7 +379,7 @@ async function start() {
       character: characterEditor.snapshot(),
     }));
     mountDeveloperTabs(ui.world, exploration.signal);
-    import('./explore.mjs?v=13').then(({ mountExploration }) => {
+    import('./explore.mjs?v=14').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
       return mountExploration(ui.world, exploration.signal, replication, settings, getCamera, characterEditor, combat);
