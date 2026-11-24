@@ -1,8 +1,10 @@
-import { createCameraCues } from './camera-cues.mjs';
+import { createCombat, combatSettings, maxHealth } from './combat.mjs';
+import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs';
+import { createCameraCues, triggerCameraCue } from './camera-cues.mjs';
 import { createCameraRig } from './camera-rig.mjs';
 import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=2';
 
-export async function mountExploration(world, signal, replication, settings, getCamera = () => null, characterEditor) {
+export async function mountExploration(world, signal, replication, settings, getCamera = () => null, characterEditor, combatPanel) {
   const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js');
   if (signal.aborted) return;
   const canvas = world.querySelector('canvas');
@@ -27,6 +29,8 @@ export async function mountExploration(world, signal, replication, settings, get
   const capsuleGeometry = new THREE.CapsuleGeometry(0.36, 1.08, 8, 16);
   const localMaterial = new THREE.MeshStandardMaterial({color: 0x8ed4ff});
   const remoteMaterial = new THREE.MeshStandardMaterial({color: 0xffb86c});
+  const remoteAttack = new THREE.MeshStandardMaterial({color: 0xff846c, emissive: 0x562114});
+  const remoteDead = new THREE.MeshStandardMaterial({color: 0x5e6369});
   const capsule = new THREE.Mesh(capsuleGeometry, localMaterial);
   const remoteCapsules = new Map();
   scene.add(capsule);
@@ -36,11 +40,14 @@ export async function mountExploration(world, signal, replication, settings, get
   const spawnAngle = replication.spawnAngle / 4294967296 * Math.PI * 2;
   actor.x = Math.cos(spawnAngle) * 3;
   actor.z = Math.sin(spawnAngle) * 3;
+  const combatConfig = combatPanel?.applied ?? combatSettings();
+  const defaultSpawn = { x: actor.x, z: actor.z };
+  Object.assign(actor, combatConfig.spawn ?? {});
   const tickCues = createCameraCues(world, signal);
   const shakeOffset = new THREE.Vector3();
   const cameraRig = createCameraRig(THREE, canvas, camera, actor, settings, getCamera, signal);
   const held = new Set();
-  const handled = new Set(['KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','KeyC','Space','KeyE','KeyF']);
+  const handled = new Set(['KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','KeyC','Space','KeyE','KeyF','KeyX','Digit1','Digit2','Digit3','Digit4']);
   const input = {x:0,z:0,walk:false,sprint:false,jump:false,crouch:false,dash:false};
   let lastShift = -Infinity;
   let pointer = null, sprintPointer = null, stickX = 0, stickZ = 0, frame;
@@ -48,7 +55,24 @@ export async function mountExploration(world, signal, replication, settings, get
   let scale = 1;
   let jumpUntil = 0;
 
+  const combat = createCombat(actor, combatConfig, defaultSpawn, slot => characterEditor?.duration(slot),
+    () => triggerCameraCue(world, 'shake'), resetControls);
+  const editing = () => world.hasAttribute('data-edit-hud') || world.hasAttribute('data-edit-spawn');
+  const control = mountCombatHud(world, actions, signal, {
+    press(id) { if (!editing()) { previewFighting = true; combat.press(id); } },
+    blocked: combat.blocked, respawnLeft: combat.respawnLeft,
+  });
+  const health = createHealthBars(THREE, world, canvas, camera, signal);
+  mountSpawnGizmo(THREE, world, canvas, scene, camera, combatPanel?.draft ?? combatConfig, actor, signal);
+  let previewFighting = false, nextDummyAttack = 0;
+  const dummy = replication.preview ? createMovement() : null;
+  const dummySpawn = { x: actor.x, z: Math.max(-49, actor.z - 1.65) };
+  if (dummy) Object.assign(dummy, dummySpawn, { facingZ: 1, connection: 'preview' });
+  const training = dummy && createCombat(dummy, combatSettings(), dummySpawn, () => undefined, () => {}, () => {});
+  const trainingPlayers = new Map();
+
   function interact() {
+    if (editing() || !combat.interact()) return;
     world.dispatchEvent(new CustomEvent('player-interact', { bubbles: true, detail: { x: actor.x, y: actor.y, z: actor.z } }));
   }
 
@@ -77,14 +101,16 @@ export async function mountExploration(world, signal, replication, settings, get
   world.addEventListener('focusin', event => {
     if (event.target.matches('input, textarea, [contenteditable]')) resetControls();
   }, options);
-  const requestJump = () => { jumpUntil = performance.now() + 140; };
+  const requestJump = () => { if (!editing() && !combat.blocked()) jumpUntil = performance.now() + 140; };
   const hasMoveInput = () => pointer !== null || ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(key => held.has(key));
   window.addEventListener('keydown', event => {
-    if (world.hasAttribute('data-edit-hud') || !handled.has(event.code) || event.altKey || event.ctrlKey || event.metaKey ||
+    if (editing() || combat.blocked() || !handled.has(event.code) || event.altKey || event.ctrlKey || event.metaKey ||
       event.target.matches?.('input, textarea, [contenteditable]') ||
       (event.code === 'Space' && event.target.closest?.('button') && !hasMoveInput())) return;
     event.preventDefault();
     if (event.repeat || held.has(event.code)) return;
+    if (event.code === 'KeyX') control.toggle();
+    if (event.code.startsWith('Digit')) control.press(Number(event.code.at(-1)) - 1);
     const wasSprinting = held.has('ShiftLeft') || held.has('ShiftRight');
     held.add(event.code);
     if ((event.code === 'ShiftLeft' || event.code === 'ShiftRight') && !wasSprinting) {
@@ -101,6 +127,7 @@ export async function mountExploration(world, signal, replication, settings, get
   window.addEventListener('keyup', event => held.delete(event.code), options);
 
   world.addEventListener('mawa:hud-edit', resetControls, { signal });
+  world.addEventListener('mawa:spawn-editing', resetControls, { signal });
   function moveStick(event) {
     const bounds = stick.getBoundingClientRect();
     const angle = (parseFloat(stick.style.rotate) || 0) * Math.PI / 180;
@@ -110,6 +137,23 @@ export async function mountExploration(world, signal, replication, settings, get
     const cos = Math.cos(angle), sin = Math.sin(angle);
     const x = event.clientX - bounds.left - bounds.width / 2;
     const y = event.clientY - bounds.top - bounds.height / 2;
+    if (training) {
+      trainingPlayers.set('local', { ...actor, receivedAt: now, connection: 'local' });
+      const dx = actor.x - dummy.x, dz = actor.z - dummy.z;
+      const distance = Math.hypot(dx, dz);
+      if (previewFighting && actor.hp && distance <= 2.1 && distance > .01 && now >= nextDummyAttack) {
+        dummy.facingX = dx / distance;
+        dummy.facingZ = dz / distance;
+        training.press('basic');
+        nextDummyAttack = now + 1600;
+      }
+      training.tick(dt, now, trainingPlayers);
+      if (dummy.hp) stepMovement(dummy, { x: 0, z: 0 }, dt * training.timeScale(), settings);
+      dummy.receivedAt = now;
+      replication.players.set('training', dummy);
+    }
+    combat.tick(dt, now, replication.players);
+    control.update();
     const localX = (x * cos + y * sin) / (visualZoom * sx);
     const localY = (-x * sin + y * cos) / (visualZoom * sy);
     const localDistance = Math.hypot(localX, localY);
@@ -122,7 +166,7 @@ export async function mountExploration(world, signal, replication, settings, get
   }
 
   stick.addEventListener('pointerdown', event => {
-    if (pointer !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    if (combat.blocked() || editing() || pointer !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
     event.preventDefault();
     pointer = event.pointerId;
     stick.setPointerCapture(pointer);
@@ -153,12 +197,13 @@ export async function mountExploration(world, signal, replication, settings, get
     if (event.detail === 0 && !event.pointerType) requestJump();
   }, options);
   function toggleWalk() {
+    if (combat.blocked() || editing()) return;
     input.walk = !input.walk;
     walk.setAttribute('aria-pressed', String(input.walk));
   }
   walk.addEventListener('click', toggleWalk, options);
   sprint.addEventListener('pointerdown', event => {
-    if (sprintPointer !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    if (combat.blocked() || editing() || sprintPointer !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
     sprintPointer = event.pointerId;
     sprint.setPointerCapture(sprintPointer);
   }, options);
@@ -172,11 +217,12 @@ export async function mountExploration(world, signal, replication, settings, get
   // Cancel iOS's synthetic tap on action buttons. Touchend dispatches click-only
   // actions here, while Jump and Sprint keep their pointer-based controls.
   actions.addEventListener('touchend', event => {
-    const button = event.target.closest('button[data-action]');
+    const button = event.target.closest('button[data-action],button[data-combat-action]');
     if (!button || !event.cancelable) return;
     event.preventDefault();
     if (button === walk) toggleWalk();
     if (button === interaction) interact();
+    if (button.dataset.combatAction && !button.disabled) button.click();
   }, { signal, passive: false });
 
   const observer = new ResizeObserver(resize);
@@ -185,6 +231,23 @@ export async function mountExploration(world, signal, replication, settings, get
   function animate(now) {
     const dt = Math.min((now - previous) / 1000, 0.05);
     previous = now;
+    if (training) {
+      trainingPlayers.set('local', { ...actor, receivedAt: now, connection: 'local' });
+      const dx = actor.x - dummy.x, dz = actor.z - dummy.z;
+      const distance = Math.hypot(dx, dz);
+      if (previewFighting && actor.hp && distance <= 2.1 && distance > .01 && now >= nextDummyAttack) {
+        dummy.facingX = dx / distance;
+        dummy.facingZ = dz / distance;
+        training.press('basic');
+        nextDummyAttack = now + 1600;
+      }
+      training.tick(dt, now, trainingPlayers);
+      if (dummy.hp) stepMovement(dummy, { x: 0, z: 0 }, dt * training.timeScale(), settings);
+      dummy.receivedAt = now;
+      replication.players.set('training', dummy);
+    }
+    combat.tick(dt, now, replication.players);
+    control.update();
     const localX = Number(held.has('KeyD')) - Number(held.has('KeyA')) + stickX;
     const localZ = Number(held.has('KeyS')) - Number(held.has('KeyW')) + stickZ;
     const yaw = cameraRig.heading();
@@ -194,18 +257,20 @@ export async function mountExploration(world, signal, replication, settings, get
     input.sprint = sprintPointer !== null || held.has('ShiftLeft') || held.has('ShiftRight');
     input.jump = jumpUntil >= now && actor.state === ActorState.GROUNDED && actor.dashLeft === 0 && !input.dash;
     if (input.jump) jumpUntil = 0;
-    stepMovement(actor, input, dt, settings);
+    if (actor.hp > 0) stepMovement(actor, combat.movement(input), dt * combat.timeScale(), settings);
     input.jump = input.crouch = input.dash = false;
     actor.x = THREE.MathUtils.clamp(actor.x, -49, 49);
     actor.z = THREE.MathUtils.clamp(actor.z, -49, 49);
     scale = THREE.MathUtils.lerp(scale, actor.stance === Stance.CROUCH ? 0.62 : 1, 1 - Math.exp(-18 * dt));
-    capsule.scale.y = scale;
-    capsule.position.set(actor.x, actor.y + 0.9 * scale, actor.z);
+    const localHeight = actor.hp ? scale : .34;
+    capsule.scale.y = localHeight;
+    capsule.position.set(actor.x, actor.y + 0.9 * localHeight, actor.z);
+    localMaterial.color.setHex(!actor.hp ? 0x5e7581 : actor.attack ? 0xf8bba0 : 0x8ed4ff);
     replication.publish(actor, now);
     const blend = 1 - Math.exp(-24 * dt);
     for (const [id, pose] of replication.players) {
       let mesh = remoteCapsules.get(id);
-      const height = pose.crouch ? 0.62 : 1;
+      const height = pose.hp === 0 ? .34 : pose.crouch ? .62 : 1;
       if (!mesh) {
         mesh = new THREE.Mesh(capsuleGeometry, remoteMaterial);
         mesh.position.set(pose.x, pose.y + 0.9 * height, pose.z);
@@ -216,23 +281,36 @@ export async function mountExploration(world, signal, replication, settings, get
       // Predict briefly while snapshots are arriving, then settle at the last position.
       const age = Math.max(0, now - pose.receivedAt);
       const lead = age <= 80 ? age : Math.max(0, 160 - age);
-      const predictedX = THREE.MathUtils.clamp(pose.x + pose.vx * lead / 1000, -49, 49);
-      const predictedZ = THREE.MathUtils.clamp(pose.z + pose.vz * lead / 1000, -49, 49);
-      mesh.scale.y = THREE.MathUtils.lerp(mesh.scale.y, height, blend);
-      mesh.position.x = THREE.MathUtils.lerp(mesh.position.x, predictedX, blend);
-      mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, pose.y + 0.9 * mesh.scale.y, blend);
-      mesh.position.z = THREE.MathUtils.lerp(mesh.position.z, predictedZ, blend);
+      const predictedX = THREE.MathUtils.clamp(pose.x + (pose.vx ?? 0) * lead / 1000, -49, 49);
+      const predictedZ = THREE.MathUtils.clamp(pose.z + (pose.vz ?? 0) * lead / 1000, -49, 49);
+      const poseBlend = mesh.userData.life !== pose.life ? 1 : blend;
+      mesh.userData.life = pose.life;
+      mesh.material = pose.hp === 0 ? remoteDead : pose.attack ? remoteAttack : remoteMaterial;
+      mesh.scale.y = THREE.MathUtils.lerp(mesh.scale.y, height, poseBlend);
+      mesh.position.x = THREE.MathUtils.lerp(mesh.position.x, predictedX, poseBlend);
+      mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, pose.y + 0.9 * mesh.scale.y, poseBlend);
+      mesh.position.z = THREE.MathUtils.lerp(mesh.position.z, predictedZ, poseBlend);
     }
     for (const [id, mesh] of remoteCapsules) {
       if (replication.players.has(id)) continue;
       scene.remove(mesh);
       remoteCapsules.delete(id);
+      health.remove(id);
     }
     cameraRig.update(dt, capsule, scale);
-    updateCharacter?.(actor, dt, capsule);
+    updateCharacter?.(actor, dt, capsule, combat.timeScale());
     const [shakeX, shakeY, shakeZ] = tickCues(dt);
     shakeOffset.set(shakeX, shakeY, shakeZ).applyQuaternion(camera.quaternion);
     camera.position.add(shakeOffset);
+    health.begin();
+    if (getCamera()?.mode !== 'fps') {
+      health.update('local', actor.x, actor.y + Math.max(.7, characterEditor?.height() ?? 1.8 * localHeight) + .19,
+        actor.z, actor.hp, true);
+    } else health.remove('local');
+    for (const [id, mesh] of remoteCapsules) {
+      health.update(id, mesh.position.x, mesh.position.y + .9 * mesh.scale.y + .19, mesh.position.z,
+        replication.players.get(id)?.hp ?? maxHealth, false, id === 'training' ? 'Target latihan' : '');
+    }
     renderer.render(scene, camera);
     camera.position.sub(shakeOffset);
     frame = requestAnimationFrame(animate);
@@ -248,6 +326,8 @@ export async function mountExploration(world, signal, replication, settings, get
     capsuleGeometry.dispose();
     localMaterial.dispose();
     remoteMaterial.dispose();
+    remoteAttack.dispose();
+    remoteDead.dispose();
     renderer.dispose();
     walk.setAttribute('aria-pressed', 'false');
     resetControls();

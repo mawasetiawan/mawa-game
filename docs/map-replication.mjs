@@ -13,14 +13,17 @@ export function connectMapReplication(data, db, party, uid, signal) {
     snapshot.forEach(player => {
       if (player.key === uid) return;
       let latest;
-      player.forEach(connection => { latest = connection.val(); });
+      player.forEach(connection => { latest = { ...connection.val(), connection: connection.key }; });
       if (latest) {
         const previous = players.get(player.key);
         if (!previous || previous.x !== latest.x || previous.y !== latest.y ||
-            previous.z !== latest.z || previous.crouch !== latest.crouch) {
+            previous.z !== latest.z || previous.crouch !== latest.crouch ||
+            previous.hp !== latest.hp || previous.life !== latest.life ||
+            previous.attack?.id !== latest.attack?.id || previous.pulse !== latest.pulse ||
+            previous.connection !== latest.connection) {
           const now = performance.now();
           const elapsed = previous ? now - previous.receivedAt : Infinity;
-          const velocity = axis => elapsed >= 40 && elapsed <= 200 ?
+          const velocity = axis => latest.life === previous?.life && elapsed >= 40 && elapsed <= 200 ?
             Math.max(-36, Math.min(36, (latest[axis] - previous[axis]) / (elapsed / 1000))) : 0;
           players.set(player.key, { ...latest, receivedAt: now, vx: velocity('x'), vz: velocity('z') });
         }
@@ -63,7 +66,12 @@ export function connectMapReplication(data, db, party, uid, signal) {
     publish(actor, now) {
       if (!connectedRef || now < nextUpdate) return;
       const round = value => Math.round(value * 100) / 100;
-      const pose = { x: round(actor.x), y: round(actor.y), z: round(actor.z), crouch: actor.stance === 'crouch' };
+      const pose = { x: round(actor.x), y: round(actor.y), z: round(actor.z), crouch: actor.stance === 'crouch',
+        hp: actor.hp, life: actor.life };
+      if (actor.attack) {
+        pose.attack = actor.attack;
+        pose.pulse = Math.floor(now / 120) % 1000000000;
+      }
       const key = JSON.stringify(pose);
       if (key === lastSent) return;
       const connection = connectedRef;

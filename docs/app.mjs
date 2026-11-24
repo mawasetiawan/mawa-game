@@ -1,11 +1,12 @@
-import { mountCharacterPanel } from './character-editor.mjs?v=2';
+import { mountCombatPanel } from './combat.mjs';
+import { mountCharacterPanel } from './character-editor.mjs?v=3';
 import { mountCameraCuePanel } from './camera-cues.mjs';
 import { mountHudEditor } from './hud-editor.mjs?v=2';
 import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=2';
-import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=9';
+import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=combat';
 import { createLoginHandoff } from './login-handoff.mjs';
 import { firebaseConfig } from './config.mjs';
-import { connectMapReplication } from './map-replication.mjs?v=2';
+import { connectMapReplication } from './map-replication.mjs?v=3';
 import { connectParty } from './party.mjs?v=1';
 
 const ui = Object.fromEntries([...document.querySelectorAll('[id]')].map(node => [node.id, node]));
@@ -350,11 +351,16 @@ async function start() {
       clearLocal: () => personalCameras.delete(uid),
     }, exploration.signal);
     const characterEditor = mountCharacterPanel(ui.world, exploration.signal);
+    const combatRef = ref(db, 'combatSettings');
+    const combat = mountCombatPanel(ui.world, exploration.signal, uid, {
+      watch: update => onValue(combatRef, snapshot => update(snapshot.val()), error => console.error('Combat settings:', error)),
+      save: canShare ? next => set(combatRef, next) : undefined,
+    });
     mountDeveloperTabs(ui.world, exploration.signal);
-    import('./explore.mjs?v=9').then(({ mountExploration }) => {
+    import('./explore.mjs?v=10').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
-      return mountExploration(ui.world, exploration.signal, replication, settings, getCamera, characterEditor);
+      return mountExploration(ui.world, exploration.signal, replication, settings, getCamera, characterEditor, combat);
     }).catch(error => {
       if (exploration.signal.aborted) return;
       exploration.abort();

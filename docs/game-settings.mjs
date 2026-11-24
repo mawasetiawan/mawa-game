@@ -198,6 +198,7 @@ export function mountDeveloperTabs(world, signal) {
     effects: ['✦', 'Efek', ['Camera Shake & Fade']],
     hud: ['▦', 'HUD', ['Tata Letak HUD', 'Tampilan']],
     character: ['◇', 'Karakter', ['Karakter']],
+    combat: ['✚', 'Combat', ['Combat']],
     movement: ['↗', 'Gerak', ['Gerakan']],
   };
   const sections = [...group.children];
@@ -241,8 +242,8 @@ export function mountDeveloperTabs(world, signal) {
       button.tabIndex = active ? 0 : -1;
       page.hidden = !active;
     }
-    save.hidden = id === 'effects' || id === 'character';
-    if (output) output.hidden = id === 'effects' || id === 'character';
+    save.hidden = ['effects', 'character', 'combat'].includes(id);
+    if (output) output.hidden = ['effects', 'character', 'combat'].includes(id);
     group.scrollTop = 0;
     panel.dispatchEvent(new CustomEvent('mawa:developer-tab', { detail: id }));
   }

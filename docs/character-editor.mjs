@@ -1,11 +1,28 @@
+import { attackSlot, combatActions, comboLimit, detectAnimations, loopsByDefault } from './animation-slots.mjs';
+
 const groups = {
   'Berdiri': { idle: 'Idle', walk: 'Jalan', run: 'Lari', sprint: 'Sprint' },
   'Jongkok': { crouchEnter: 'Enter Crouch', crouchIdle: 'Idle Crouch', crouchMove: 'Move Crouch', crouchExit: 'Exit Crouch' },
   'Di Udara': { jump: 'Lompat', fall: 'Jatuh', land: 'Mendarat' },
-  'Aksi': { dash: 'Dash' },
 };
-const states = Object.assign({}, ...Object.values(groups));
-const maxBytes = 32 * 1024 * 1024;
+const actionGroups = {
+  'Umum': { dash: 'Dash', interact: 'Interaksi', death: 'Death' },
+  ...Object.fromEntries(Object.entries(combatActions).map(([id, title]) => [title,
+    Object.fromEntries(Array.from({ length: comboLimit }, (_, index) => [attackSlot(id, index + 1), 'Combo ' + (index + 1)])),
+  ])),
+};
+const states = Object.assign({}, ...Object.values(groups), ...Object.values(actionGroups));
+const resolveMapping = asset => ({ ...asset.detected, ...asset.mapping });
+function clipKey(mapping, slot) {
+  if (mapping[slot] === 'off') return undefined;
+  const firstCombo = slot?.replace(/Combo[2-4]$/, 'Combo1');
+  const key = mapping[slot] ?? mapping[firstCombo];
+  return /^\d+$/.test(key ?? '') ? key : undefined;
+}
+const mib = 1024 * 1024;
+const maxBytes = 32 * mib;
+const githubWebLimit = 25 * mib;
+const formatSize = bytes => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(bytes / mib) + ' MiB';
 
 export function characterAnimationState(actor) {
   if (actor.state === 'falling') return 'fall';
@@ -120,6 +137,17 @@ export function mountCharacterPanel(world, signal) {
     disposeModel(asset.scene);
   });
   edit.append(collection, controls);
+  const sizeWarning = document.createElement('p');
+  sizeWarning.className = 'character-size-warning';
+  sizeWarning.setAttribute('role', 'status');
+  sizeWarning.hidden = true;
+  collection.after(sizeWarning);
+  function showSizeWarning(bytes, minimum = false) {
+    sizeWarning.hidden = bytes <= githubWebLimit;
+    sizeWarning.textContent = sizeWarning.hidden ? '' :
+      'Paket ' + (minimum ? 'minimal ' : '') + formatSize(bytes) +
+      '. Batas upload GitHub lewat browser 25 MiB per file. Kecilkan mesh, tekstur, atau animasi untuk upload lewat browser.';
+  }
   const save = button('Save as Character', async () => {
     const asset = library.get(current);
     const name = nameField.value.trim();
@@ -134,16 +162,19 @@ export function mountCharacterPanel(world, signal) {
         reader.readAsDataURL(new Blob([asset.source]));
       });
       if (signal.aborted) return;
-      const payload = { version: 1, name, source, options: { ...asset.options }, mapping: { ...asset.mapping },
+      const payload = { version: 1, name, source, options: { ...asset.options }, mapping: { ...asset.mapping }, loops: { ...asset.loops },
         extra: asset.clips.slice(asset.embeddedCount).map(clip => runtime.serializeClip(clip)) };
-      const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+      const file = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      if (asset === library.get(current)) showSizeWarning(file.size);
+      const url = URL.createObjectURL(file);
       const link = Object.assign(document.createElement('a'), { href: url, download: id });
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       listCharacter(id, name, payload);
       savedList.value = id;
       use.disabled = false;
-      status.textContent = 'Paket diunduh. Pilih Upload ke GitHub untuk menyimpannya di repo.';
+      status.textContent = file.size > githubWebLimit ? 'Paket diunduh untuk penggunaan lokal.' :
+        'Paket diunduh. Pilih Upload ke GitHub untuk menyimpannya di repo.';
     } catch { status.textContent = 'Paket karakter gagal disimpan.'; }
   });
   const nameField = document.createElement('input');
@@ -181,8 +212,11 @@ export function mountCharacterPanel(world, signal) {
       for (const entry of (Array.isArray(data.extra) ? data.extra : []).slice(0, 64-next.clips.length)) {
         next.clips.push(runtime.parseClip(entry));
       }
+      next.detected = detectAnimations(next.clips);
       for (const key of Object.keys(states)) {
         const value = data.mapping?.[key];
+        if (value === 'off') next.mapping[key] = value;
+        if (typeof data.loops?.[key] === 'boolean') next.loops[key] = data.loops[key];
         if (typeof value === 'string' && /^\d+$/.test(value) && next.clips[Number(value)]) next.mapping[key] = value;
       }
       current = String(++serial);
@@ -211,27 +245,45 @@ export function mountCharacterPanel(world, signal) {
     controls.append(label);
     return [key, field];
   }));
-  const locomotion = document.createElement('details');
-  const locomotionTitle = document.createElement('summary');
-  locomotionTitle.textContent = 'Locomotion';
-  locomotion.append(locomotionTitle);
-  controls.append(locomotion);
-  for (const [groupName, slots] of Object.entries(groups)) {
-    const group = document.createElement('details');
-    const heading = document.createElement('summary');
-    heading.textContent = groupName;
-    group.append(heading);
-    locomotion.append(group);
-    for (const [key,name] of Object.entries(slots)) {
-    const label = document.createElement('label');
-    const select = document.createElement('select');
-    select.setAttribute('aria-label', 'Animasi ' + name);
-    select.addEventListener('change', () => { library.get(current).mapping[key] = select.value; preview = ''; }, { signal });
-    label.append(name, select);
-    group.append(label);
-    stateInputs.set(key, select);
+  function addAnimationGroups(title, entries) {
+    const branch = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = title;
+    branch.append(summary);
+    controls.append(branch);
+    for (const [groupName, slots] of Object.entries(entries)) {
+      const group = document.createElement('details');
+      const heading = document.createElement('summary');
+      heading.textContent = groupName;
+      group.append(heading);
+      branch.append(group);
+      for (const [key, name] of Object.entries(slots)) {
+        const label = document.createElement('label');
+        const select = document.createElement('select');
+        select.setAttribute('aria-label', 'Animasi ' + groupName + ' ' + name);
+        select.addEventListener('change', () => {
+          const { mapping } = library.get(current);
+          if (select.value === '') delete mapping[key];
+          else mapping[key] = select.value;
+          preview = '';
+          audition.value = '';
+        }, { signal });
+        label.append(name, select);
+        group.append(label);
+        const loopLabel = document.createElement('label');
+        const loop = document.createElement('input');
+        loop.type = 'checkbox';
+        loop.setAttribute('aria-label', 'Loop ' + groupName + ' ' + name);
+        loop.disabled = ['fall', 'death'].includes(key);
+        loop.addEventListener('change', () => { library.get(current).loops[key] = loop.checked; }, { signal });
+        loopLabel.append(key === 'fall' ? 'Loop sampai mendarat' : 'Loop', loop);
+        group.append(loopLabel);
+        stateInputs.set(key, { select, loop });
+      }
     }
   }
+  addAnimationGroups('Locomotion', groups);
+  addAnimationGroups('Aksi', actionGroups);
   const audition = document.createElement('select');
   audition.setAttribute('aria-label', 'Preview klip');
   audition.addEventListener('change', () => { preview = audition.value; }, { signal });
@@ -260,10 +312,17 @@ export function mountCharacterPanel(world, signal) {
     save.disabled = pending || !asset.scene;
     use.disabled = pending || !runtime || !savedList.value || library.size >= 6;
     nameField.value = asset.name ?? '';
+    showSizeWarning(asset.source ? Math.ceil(asset.source.byteLength / 3) * 4 : 0, true);
     preview = '';
     if (!asset.scene) return;
     for (const [key,field] of Object.entries(settings)) field.value = asset.options[key];
-    for (const [key,select] of stateInputs) fill(select, asset, asset.mapping[key] ?? '', 'Otomatis / Idle');
+    for (const [key, { select, loop }] of stateInputs) {
+      const detected = asset.clips[Number(clipKey(asset.detected, key))];
+      fill(select, asset, asset.mapping[key] ?? '', detected ? 'Otomatis · ' + detected.name : 'Otomatis · Belum cocok');
+      select.add(new Option('Tanpa klip khusus', 'off'), 1);
+      select.value = asset.mapping[key] ?? '';
+      loop.checked = key === 'fall' || (key !== 'death' && (asset.loops[key] ?? loopsByDefault(key)));
+    }
     fill(audition,asset,'','Ikuti gerakan');
   }
   model.add(new Option('Capsule bawaan','capsule'));
@@ -279,7 +338,7 @@ export function mountCharacterPanel(world, signal) {
     status.textContent = 'Memuat ' + file.name + '…';
     let payload;
     try {
-      if (!/\.glb$/i.test(file.name) || file.size > maxBytes || file.size < 12) throw Error('Pilih GLB valid berukuran maksimal 32 MB.');
+      if (!/\.glb$/i.test(file.name) || file.size > maxBytes || file.size < 12) throw Error('Pilih GLB valid berukuran maksimal 32 MiB.');
       const source = await file.arrayBuffer();
       payload = await runtime.read(source);
       if (signal.aborted) return;
@@ -288,6 +347,7 @@ export function mountCharacterPanel(world, signal) {
         if (!clips.length) throw Error('Tidak ada klip yang cocok dengan rig dan nama tulang mesh ini.');
         const count = Math.min(64 - asset.clips.length, clips.length);
         asset.clips.push(...clips.slice(0, count));
+        asset.detected = detectAnimations(asset.clips);
         status.textContent = count + ' klip dipasang ke daftar animasi.';
       } else {
         const next = runtime.prepare(payload);
@@ -298,7 +358,7 @@ export function mountCharacterPanel(world, signal) {
         model.add(new Option(file.name, current));
         model.value = current;
         payload = null;
-        status.textContent = 'Mesh tampil di layar ini. Pilih klip untuk tiap gerakan.';
+        status.textContent = Object.keys(next.detected).length + ' slot terdeteksi dari nama klip.';
       }
     } catch (error) {
       if (!signal.aborted) status.textContent = error.message || 'GLB gagal dimuat.';
@@ -313,10 +373,19 @@ export function mountCharacterPanel(world, signal) {
   render();
 
   return {
+    duration(slot) {
+      const asset = library.get(current);
+      const key = clipKey(resolveMapping(asset), slot);
+      return key ? asset.clips[Number(key)]?.duration / asset.options.speed : undefined;
+    },
+    height() {
+      const { options } = library.get(current);
+      return options ? 1.8 * options.scale + options.height : null;
+    },
     attach(THREE, scene) {
       const root = new THREE.Group();
       scene.add(root);
-      let active, action, mixer, crouching, airborne, transition, remaining = 0;
+      let active, action, mixer, crouching, airborne, transition, playback, remaining = 0;
       runtime = {
         async read(buffer) {
           if (new DataView(buffer).getUint32(0,true) !== 0x46546c67) throw Error('File ini bukan GLB.');
@@ -349,7 +418,8 @@ export function mountCharacterPanel(world, signal) {
           offset.position.set(-center.x,-bounds.min.y,-center.z);
           offset.add(payload.scene);
           fit.add(offset);
-          return { scene: payload.scene, fit, clips: payload.animations.slice(0,64), mapping: {}, embeddedCount: Math.min(64,payload.animations.length),
+          const clips = payload.animations.slice(0, 64);
+          return { scene: payload.scene, fit, clips, mapping: {}, detected: detectAnimations(clips), loops: {}, embeddedCount: clips.length,
             options: {scale:1,height:0,yaw:0,speed:1,blend:.16} };
         },
       };
@@ -360,7 +430,7 @@ export function mountCharacterPanel(world, signal) {
         const images = new Set();
         for (const asset of library.values()) disposeModel(asset.scene, images);
       }, {once:true});
-      return (actor, dt, capsule) => {
+      return (actor, dt, capsule, timeScale = 1) => {
         const asset = library.get(current);
         if (asset !== active) {
           mixer?.stopAllAction();
@@ -369,14 +439,15 @@ export function mountCharacterPanel(world, signal) {
           active = asset;
           crouching = airborne = transition = undefined;
           remaining = 0;
-          action = undefined;
+          action = playback = undefined;
           mixer = asset.scene ? new THREE.AnimationMixer(asset.scene) : undefined;
           if (asset.fit) root.add(asset.fit);
         }
         root.visible = Boolean(asset.scene) && capsule.visible;
         if (!asset.scene) return;
         capsule.visible = false;
-        const { options, clips, mapping } = asset;
+        const { options, clips } = asset;
+        const mapping = resolveMapping(asset);
         root.position.set(actor.x,actor.y + options.height,actor.z);
         root.rotation.y = Math.atan2(actor.facingX,actor.facingZ) + options.yaw * Math.PI / 180;
         root.scale.setScalar(options.scale);
@@ -387,30 +458,36 @@ export function mountCharacterPanel(world, signal) {
           crouching !== undefined && crouching !== nextCrouch ? (nextCrouch ? 'crouchEnter' : 'crouchExit') : undefined;
         crouching = nextCrouch;
         airborne = nextAir;
-        if (nextAir || preview) remaining = 0;
-        if (edge && !preview && mapping[edge] !== undefined && mapping[edge] !== '') {
+        if (nextAir || preview || actor.action) remaining = 0;
+        if (edge && !preview && !actor.action && clips[Number(mapping[edge])]) {
           transition = edge;
-          remaining = clips[Number(mapping[edge])]?.duration ?? 0;
+          remaining = clips[Number(mapping[edge])].duration;
         }
-        const slot = remaining > 0 ? transition : state;
-        const key = preview || mapping[slot] || mapping.idle;
-        const clip = key === undefined || key === '' ? undefined : clips[Number(key)];
-        if (action?.getClip() !== clip) {
+        const clipFor = key => key ? clips[Number(key)] : undefined;
+        const slot = actor.action === 'death' || clipKey(mapping, actor.action) ? actor.action : remaining > 0 ? transition : state;
+        const selectedPreview = slot === 'death' ? '' : preview;
+        const key = selectedPreview || clipKey(mapping, slot) || (slot === 'death' ? undefined : clipKey(mapping, 'idle'));
+        const clip = clipFor(key);
+        const once = !selectedPreview && (slot === 'death' || (slot !== 'fall' &&
+          !(asset.loops[slot] ?? loopsByDefault(slot))));
+        const playbackKey = [selectedPreview, slot, key, once, slot === actor.action ? actor.actionSerial : ''].join('/');
+        if (playback !== playbackKey) {
           const previous = action;
           action = clip ? mixer.clipAction(clip).reset() : undefined;
+          playback = playbackKey;
           if (action) {
-            const once = remaining > 0 && !preview;
             action.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity);
             action.clampWhenFinished = once;
             action.play();
           }
-          if (previous && options.blend > 0) {
-            if (action) action.crossFadeFrom(previous, options.blend, false);
+          if (previous && previous !== action) {
+            if (options.blend <= 0) previous.stop();
+            else if (action) action.crossFadeFrom(previous, options.blend, false);
             else previous.fadeOut(options.blend);
-          } else previous?.stop();
+          }
         }
-        remaining -= dt * options.speed;
-        mixer.timeScale = options.speed;
+        remaining -= dt * options.speed * timeScale;
+        mixer.timeScale = options.speed * timeScale;
         mixer.update(dt);
       };
     },

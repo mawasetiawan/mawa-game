@@ -190,12 +190,86 @@
               "crouch": {
                 ".validate": "newData.isBoolean()"
               },
+              "hp": {
+                ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+              },
+              "life": {
+                ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000000000"
+              },
+              "pulse": {
+                ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 1000000000"
+              },
+              "attack": {
+                ".validate": "newData.hasChildren(['id', 'yaw', 'kind']) && newData.parent().child('hp').val() > 0 && newData.parent().child('pulse').exists()",
+                "id": {
+                  ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 1000000000 && newData.val() % 1 == 0"
+                },
+                "yaw": {
+                  ".validate": "newData.isNumber() && newData.val() >= -3.15 && newData.val() <= 3.15"
+                },
+                "kind": {
+                  ".validate": "newData.val() == 'basic' || newData.val() == 'skill1' || newData.val() == 'skill2' || newData.val() == 'ultimate'"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              },
               "$other": {
                 ".validate": false
               }
             }
           }
         }
+      }
+    },
+    "combatSettings": {
+      ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com'",
+      ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.token.email_verified == true && auth.token.email == 'mawadatulsetiawan@gmail.com' && newData.exists()",
+      ".validate": "newData.hasChildren(['respawn', 'actions'])",
+      "respawn": {
+        ".validate": "newData.isNumber() && newData.val() >= 0.5 && newData.val() <= 30"
+      },
+      "spawn": {
+        ".validate": "newData.hasChildren(['x', 'z'])",
+        "x": {
+          ".validate": "newData.isNumber() && newData.val() >= -49 && newData.val() <= 49"
+        },
+        "z": {
+          ".validate": "newData.isNumber() && newData.val() >= -49 && newData.val() <= 49"
+        },
+        "$other": {
+          ".validate": false
+        }
+      },
+      "actions": {
+        ".validate": "newData.hasChildren(['basic', 'skill1', 'skill2', 'ultimate'])",
+        "$action": {
+          ".validate": "($action == 'basic' || $action == 'skill1' || $action == 'skill2' || $action == 'ultimate') && newData.hasChildren(['damage', 'count', 'reach', 'effect', 'seconds', 'shake'])",
+          "damage": {
+            ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 100 && newData.val() % 1 == 0"
+          },
+          "count": {
+            ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 4 && newData.val() % 1 == 0"
+          },
+          "reach": {
+            ".validate": "newData.isNumber() && newData.val() >= 0.6 && newData.val() <= 5"
+          },
+          "seconds": {
+            ".validate": "newData.isNumber() && newData.val() >= 0.1 && newData.val() <= 4"
+          },
+          "effect": {
+            ".validate": "newData.val() == 'none' || newData.val() == 'stun' || newData.val() == 'slow' || newData.val() == 'airborne'"
+          },
+          "shake": {
+            ".validate": "newData.isBoolean()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      },
+      "$other": {
+        ".validate": false
       }
     },
     "gameSettings": {

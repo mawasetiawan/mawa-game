@@ -356,3 +356,22 @@ html.immersive-game,html.immersive-game body{background:#48677d}
   .gameplay-hud .developer-compact form{flex:none}
   .gameplay-hud .developer-compact .developer-fields{overflow:visible}
 }
+
+.combat-health-layer{position:absolute;inset:0;z-index:1;overflow:hidden;pointer-events:none}
+.combat-health{position:absolute;top:0;left:0;width:clamp(30px,7vw,64px);height:5px;border-radius:4px;background:#121d25;border:1px solid #d9e7ee80}
+.combat-health i{display:block;height:100%;border-radius:inherit;background:#f3a86b;transform-origin:left}
+.combat-health.local i{background:#bee9a0}
+.combat-health.empty{opacity:.55}
+.combat-health span{position:absolute;left:50%;bottom:7px;transform:translateX(-50%);font-size:10px;white-space:nowrap;color:#fff;text-shadow:0 1px 3px #000}
+.combat-toggle{pointer-events:auto;touch-action:manipulation;justify-self:end;min-height:31px;padding:5px 10px;margin:0 0 6px;color:#e5f6fa;background:#182d39ed;font-size:11px}
+.combat-toggle[aria-pressed=true]{background:#713e36e8;border-color:#e5a596b5}
+.gameplay-hud .actions [data-combat-action]{line-height:1.15;background:#4c3233ed;border-color:#bc817078}
+.gameplay-hud .actions button[hidden],.combat-health[hidden],.combat-respawn[hidden],.combat-spawn-help[hidden]{display:none}
+.combat-respawn,.combat-spawn-help{position:absolute;z-index:4;left:50%;transform:translateX(-50%);max-width:calc(100% - 22px);text-align:center;padding:8px 12px;border:1px solid #c7e3ee80;border-radius:12px;background:#14242eea;color:#fff;font-size:13px}
+.combat-respawn{top:36%;pointer-events:none}
+.combat-spawn-help{top:22%;z-index:6}
+.world[data-edit-spawn] canvas{cursor:crosshair}
+.combat-spawn-readout{font-size:12px}
+.combat-action-column{display:grid;justify-items:end}
+.gameplay-hud .combat-toggle{min-height:30px;padding:4px 10px}
+.gameplay-hud .developer-panel .character-size-warning{margin:6px 0;color:#ffd2a5;background:#61371970;border-radius:8px;padding:7px 9px}
