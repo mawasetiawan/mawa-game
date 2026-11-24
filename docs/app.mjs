@@ -1,4 +1,5 @@
 import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel } from './game-settings.mjs?v=3';
+import { createLoginHandoff } from './login-handoff.mjs';
 import { firebaseConfig } from './config.mjs';
 import { connectMapReplication } from './map-replication.mjs?v=2';
 import { connectParty } from './party.mjs?v=1';
@@ -333,14 +334,45 @@ async function start() {
     ui.loginChrome.hidden = false;
   }
 
-  ui.login.addEventListener('click', () => ui.loginChoice.showModal());
+  const handoff = appleMobile && standalone && gameUrl.protocol === 'https:'
+    ? createLoginHandoff({ initializeApp, config: firebaseConfig, authSdk, data, auth, report: status })
+    : null;
+  let browserLink = gameUrl;
+  if (handoff) {
+    ui.loginChoiceHint.textContent = 'Siapkan link login, pilih browser, lalu kembali ke ikon Mawa Game.';
+    ui.loginChrome.hidden = true;
+    ui.loginOther.disabled = true;
+    void handoff.resume().catch(() => {});
+  }
+  ui.login.addEventListener('click', async () => {
+    ui.loginChoice.showModal();
+    if (!handoff || ui.login.disabled) return;
+    ui.login.disabled = true;
+    ui.loginChrome.hidden = true;
+    ui.loginOther.disabled = true;
+    ui.loginLink.hidden = true;
+    ui.loginOther.setAttribute('aria-expanded', 'false');
+    ui.loginChoiceHint.textContent = 'Menyiapkan link login…';
+    try {
+      browserLink = await handoff.prepare();
+      ui.gameLink.value = browserLink.href;
+      ui.loginChrome.href = 'googlechromes:' + browserLink.href.slice('https:'.length);
+      ui.loginChrome.hidden = false;
+      ui.loginOther.disabled = false;
+      ui.loginChoiceHint.textContent = 'Pilih browser untuk login. Setelah selesai, kembali ke ikon Mawa Game.';
+    } catch {
+      ui.loginChoiceHint.textContent = 'Link browser belum tersedia. Coba lagi atau lanjut di app ini.';
+    } finally {
+      ui.login.disabled = false;
+    }
+  });
   ui.loginOther.addEventListener('click', () => {
     ui.loginLink.hidden = !ui.loginLink.hidden;
     ui.loginOther.setAttribute('aria-expanded', String(!ui.loginLink.hidden));
   });
   ui.copyGameLink.addEventListener('click', async () => {
     try {
-      await navigator.clipboard.writeText(gameUrl.href);
+      await navigator.clipboard.writeText(browserLink.href);
       ui.copyGameStatus.textContent = 'Link disalin.';
     } catch {
       ui.gameLink.select();
@@ -355,6 +387,7 @@ async function start() {
       const provider = new authSdk.GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       await authSdk.signInWithPopup(auth, provider);
+      handoff?.cancel();
     } catch (error) {
       console.warn('Login Google:', error);
       const blocked = error.code === 'auth/popup-blocked';
