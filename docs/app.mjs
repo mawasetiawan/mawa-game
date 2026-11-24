@@ -1,7 +1,7 @@
 import { mountCameraCuePanel } from './camera-cues.mjs';
 import { mountHudEditor } from './hud-editor.mjs?v=2';
 import { mountCameraPanel, parseCamera } from './camera-settings.mjs';
-import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=5';
+import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=6';
 import { createLoginHandoff } from './login-handoff.mjs';
 import { firebaseConfig } from './config.mjs';
 import { connectMapReplication } from './map-replication.mjs?v=2';
@@ -325,7 +325,7 @@ async function start() {
     const exploration = new AbortController();
     active.exploration = exploration;
     if (isDeveloper(active.user)) {
-      mountDeveloperPanel(ui.world, next => set(settingsRef, next), settings, exploration.signal);
+      mountDeveloperPanel(ui.world, next => set(settingsRef, next), settings, exploration.signal, active.user.uid);
       mountCameraCuePanel(ui.world, exploration.signal);
       mountHudEditor(ui.world, exploration.signal, active.user.uid);
       mountCameraPanel(ui.world, {

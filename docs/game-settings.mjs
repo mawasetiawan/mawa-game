@@ -1,3 +1,4 @@
+import { createDeveloperPatternGate } from './developer-pattern.mjs';
 export const DEVELOPER_EMAIL = 'mawadatulsetiawan@gmail.com';
 
 export const fields = {
@@ -66,7 +67,7 @@ export function parseSettings(values) {
   return clean;
 }
 
-export function mountDeveloperPanel(world, save, current, signal) {
+export function mountDeveloperPanel(world, save, current, signal, developerUid) {
   const toggle = world.querySelector('#openDeveloper');
   const panel = world.querySelector('#developerPanel');
   const form = panel.querySelector('form');
@@ -132,9 +133,13 @@ export function mountDeveloperPanel(world, save, current, signal) {
     close();
     toggle.focus();
   }, { signal });
+  const unlock = developerUid ? createDeveloperPatternGate(world, developerUid, signal) : open => open();
   toggle.hidden = false;
   toggle.addEventListener('click', () => {
     if (!panel.hidden) return close();
+    unlock(openPanel);
+  }, { signal });
+  function openPanel() {
     for (const [key, { input, updateValue }] of inputs) {
       if (input.type === 'checkbox') input.checked = current[key];
       else { input.value = current[key]; updateValue(); }
@@ -143,7 +148,7 @@ export function mountDeveloperPanel(world, save, current, signal) {
     output.textContent = '';
     panel.hidden = false;
     toggle.setAttribute('aria-expanded', 'true');
-  }, { signal });
+  }
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const next = Object.fromEntries([...inputs].map(([key, { input }]) => [
