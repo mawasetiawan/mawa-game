@@ -1,5 +1,5 @@
 import { mountCombatPanel } from './combat.mjs';
-import { mountCharacterPanel } from './character-editor.mjs?v=3';
+import { mountCharacterPanel } from './character-editor.mjs?v=4';
 import { mountCameraCuePanel } from './camera-cues.mjs';
 import { mountHudEditor } from './hud-editor.mjs?v=2';
 import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=2';

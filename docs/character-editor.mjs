@@ -1,3 +1,4 @@
+import { packCharacter, resampleCharacter, unpackCharacter } from './character-package.mjs';
 import { attackSlot, combatActions, comboLimit, detectAnimations, loopsByDefault } from './animation-slots.mjs';
 
 const groups = {
@@ -84,8 +85,8 @@ export function mountCharacterPanel(world, signal) {
     .then(response => response.ok ? response.json() : [])
     .then(files => {
       for (const file of Array.isArray(files) ? files : []) {
-        if (file.type === 'file' && /^[a-z0-9-]+\.character\.json$/.test(file.name)) {
-          listCharacter(file.name, file.name.replace('.character.json', '').replaceAll('-', ' '), null);
+        if (file.type === 'file' && /^[a-z0-9-]+\.character\.json(?:\.gz)?$/.test(file.name)) {
+          listCharacter(file.name, file.name.replace(/\.character\.json(?:\.gz)?$/, '').replaceAll('-', ' '), null);
         }
       }
     }).catch(() => {});
@@ -104,7 +105,7 @@ export function mountCharacterPanel(world, signal) {
   edit.append(modelLabel);
   const controls = document.createElement('div');
   const library = new Map([['capsule', { name: 'Capsule bawaan' }]]);
-  let current = 'capsule', serial = 0, runtime, preview = '', pending = false;
+  let current = 'capsule', serial = 0, runtime, preview = '', pending = false, exporting = false;
   const stateInputs = new Map();
   const collection = document.createElement('div');
   collection.className = 'camera-buttons';
@@ -142,29 +143,37 @@ export function mountCharacterPanel(world, signal) {
   sizeWarning.setAttribute('role', 'status');
   sizeWarning.hidden = true;
   collection.after(sizeWarning);
-  function showSizeWarning(bytes, minimum = false) {
+  function showSizeWarning(bytes) {
     sizeWarning.hidden = bytes <= githubWebLimit;
     sizeWarning.textContent = sizeWarning.hidden ? '' :
-      'Paket ' + (minimum ? 'minimal ' : '') + formatSize(bytes) +
+      'Paket akhir ' + formatSize(bytes) +
       '. Batas upload GitHub lewat browser 25 MiB per file. Kecilkan mesh, tekstur, atau animasi untuk upload lewat browser.';
   }
   const save = button('Save as Character', async () => {
+    if (pending || exporting) return;
     const asset = library.get(current);
     const name = nameField.value.trim();
     if (!asset?.source || !name) { status.textContent = 'Isi nama karakter terlebih dahulu.'; return; }
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'karakter';
-    const id = slug + '.character.json';
+    exporting = save.disabled = true;
+    sizeWarning.hidden = false;
+    sizeWarning.textContent = 'Mengoptimalkan animasi dan mengompres paket…';
     try {
+      // Preserve the source bytes if a library is unavailable or the GLB uses an unsupported extension.
+      const sourceBytes = asset.embeddedCount ? await resampleCharacter(asset.source).catch(() => asset.source) : asset.source;
+      if (signal.aborted) return;
       const reader = new FileReader();
       const source = await new Promise((resolve,reject) => {
         reader.onload = () => resolve(reader.result.split(',')[1]);
         reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(new Blob([asset.source]));
+        reader.readAsDataURL(new Blob([sourceBytes]));
       });
       if (signal.aborted) return;
       const payload = { version: 1, name, source, options: { ...asset.options }, mapping: { ...asset.mapping }, loops: { ...asset.loops },
         extra: asset.clips.slice(asset.embeddedCount).map(clip => runtime.serializeClip(clip)) };
-      const file = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      const { file, suffix, rawSize } = await packCharacter(payload);
+      if (signal.aborted) return;
+      const id = slug + suffix;
       if (asset === library.get(current)) showSizeWarning(file.size);
       const url = URL.createObjectURL(file);
       const link = Object.assign(document.createElement('a'), { href: url, download: id });
@@ -173,9 +182,17 @@ export function mountCharacterPanel(world, signal) {
       listCharacter(id, name, payload);
       savedList.value = id;
       use.disabled = false;
-      status.textContent = file.size > githubWebLimit ? 'Paket diunduh untuk penggunaan lokal.' :
-        'Paket diunduh. Pilih Upload ke GitHub untuk menyimpannya di repo.';
-    } catch { status.textContent = 'Paket karakter gagal disimpan.'; }
+      status.textContent = (file.size < rawSize ? formatSize(rawSize) + ' → ' + formatSize(file.size) + '. ' : formatSize(file.size) + '. ') +
+        (file.size > githubWebLimit ? 'Paket diunduh untuk penggunaan lokal.' : 'Paket siap diunggah lewat browser GitHub.');
+    } catch (error) {
+      if (asset === library.get(current)) {
+        sizeWarning.hidden = false;
+        sizeWarning.textContent = error.message || 'Paket karakter gagal disimpan.';
+      }
+    } finally {
+      exporting = false;
+      if (!signal.aborted) save.disabled = pending || !library.get(current)?.scene;
+    }
   });
   const nameField = document.createElement('input');
   nameField.maxLength = 60;
@@ -195,8 +212,7 @@ export function mountCharacterPanel(world, signal) {
         const response = await fetch('https://raw.githubusercontent.com/' + owner + '/main/docs/characters/' + encodeURIComponent(id), { signal });
         if (!response.ok) throw Error('Karakter belum bisa dimuat dari GitHub.');
         const blob = await response.blob();
-        if (blob.size > maxBytes * 2) throw Error('Paket karakter terlalu besar.');
-        data = JSON.parse(await blob.text());
+        data = await unpackCharacter(blob);
       }
       if (data.version !== 1 || typeof data.source !== 'string' || data.source.length > Math.ceil(maxBytes / 3) * 4) throw Error('Paket karakter tidak valid.');
       const buffer = Uint8Array.from(atob(data.source), character => character.charCodeAt(0)).buffer;
@@ -309,10 +325,10 @@ export function mountCharacterPanel(world, signal) {
     importClips.disabled = pending || !runtime || !asset.scene || asset.clips.length >= 64;
     remove.disabled = pending || !asset.scene;
     model.disabled = pending;
-    save.disabled = pending || !asset.scene;
+    save.disabled = pending || exporting || !asset.scene;
     use.disabled = pending || !runtime || !savedList.value || library.size >= 6;
     nameField.value = asset.name ?? '';
-    showSizeWarning(asset.source ? Math.ceil(asset.source.byteLength / 3) * 4 : 0, true);
+    showSizeWarning(0);
     preview = '';
     if (!asset.scene) return;
     for (const [key,field] of Object.entries(settings)) field.value = asset.options[key];
@@ -398,7 +414,13 @@ export function mountCharacterPanel(world, signal) {
           return new GLTFLoader(manager).parseAsync(buffer,'');
         },
         parseClip: THREE.AnimationClip.parse,
-        serializeClip: THREE.AnimationClip.toJSON,
+        serializeClip(clip) {
+          const copy = clip.clone();
+          for (const track of copy.tracks) {
+            if (!track.createInterpolant.isInterpolantFactoryMethodGLTFCubicSpline) track.optimize();
+          }
+          return THREE.AnimationClip.toJSON(copy);
+        },
         compatible(clip, mesh) {
           return clip.tracks.length > 0 && clip.tracks.every(track => {
             const binding = THREE.PropertyBinding.parseTrackName(track.name);
