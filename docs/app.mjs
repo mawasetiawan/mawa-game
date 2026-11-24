@@ -5,6 +5,33 @@ import { connectMapReplication } from './map-replication.mjs?v=2';
 import { connectParty } from './party.mjs?v=1';
 
 const ui = Object.fromEntries([...document.querySelectorAll('[id]')].map(node => [node.id, node]));
+const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let installPrompt;
+ui.installGame.hidden = installed || !ios;
+window.addEventListener('beforeinstallprompt', event => {
+  if (installed) return;
+  event.preventDefault();
+  installPrompt = event;
+  ui.installGame.hidden = false;
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  ui.installGame.hidden = true;
+});
+ui.installGame.addEventListener('click', async () => {
+  if (!installPrompt) return ui.installHelp.showModal();
+  const prompt = installPrompt;
+  installPrompt = null;
+  try {
+    await prompt.prompt();
+    if ((await prompt.userChoice).outcome === 'accepted') ui.installGame.hidden = true;
+  } catch {
+    ui.installHelp.showModal();
+  }
+});
+
 const status = text => { ui.status.textContent = text; };
 function show(view) {
   for (const node of [ui.gate, ui.loading, ui.menu, ui.world]) node.hidden = node !== view;
@@ -131,6 +158,70 @@ async function start() {
     ui.world.addEventListener(name, stopBrowserGesture);
   }
 
+  const touchChat = matchMedia('(pointer: coarse)').matches;
+  let keyboardPage = 'letters';
+  let uppercase = false;
+
+  function showKeyboard(open) {
+    ui.chatKeyboard.hidden = !open;
+    ui.chat.toggleAttribute('data-keyboard', open);
+    ui.message.inputMode = open || touchChat ? 'none' : 'text';
+  }
+  showKeyboard(false);
+
+  function renderKeys() {
+    const rows = keyboardPage === 'letters'
+      ? ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'].map(row => [...(uppercase ? row.toUpperCase() : row)])
+      : ['1234567890', '@#%&*()-_', '.,!?/:+='].map(row => [...row]);
+    rows[2].push('⌫');
+    rows.push([keyboardPage === 'letters' ? '123' : 'ABC', '⇧', 'Spasi', 'Tutup']);
+    ui.chatKeyboard.replaceChildren(...rows.map(keys => {
+      const row = document.createElement('div');
+      for (const key of keys) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.key = key;
+        button.textContent = key;
+        if (key === '⌫') button.setAttribute('aria-label', 'Hapus karakter');
+        if (key === '⇧') button.setAttribute('aria-label', 'Huruf kapital');
+        row.append(button);
+      }
+      return row;
+    }));
+  }
+  if (touchChat) {
+    renderKeys();
+    ui.message.addEventListener('focus', () => showKeyboard(true));
+    ui.message.addEventListener('click', () => showKeyboard(true));
+    ui.chatKeyboard.addEventListener('pointerdown', event => event.preventDefault());
+    ui.chatKeyboard.addEventListener('click', event => {
+      const key = event.target.closest('button')?.dataset.key;
+      if (!key) return;
+      if (key === 'Tutup') {
+        showKeyboard(false);
+        ui.chatToggle.focus({ preventScroll: true });
+        return;
+      }
+      if (key === '123' || key === 'ABC' || key === '⇧') {
+        keyboardPage = key === '123' ? 'symbols' : 'letters';
+        uppercase = key === '⇧' && !uppercase;
+        renderKeys();
+        return;
+      }
+      const { selectionStart: start, selectionEnd: end, value, maxLength } = ui.message;
+      if (key === '⌫') {
+        const previous = Array.from(value.slice(0, start)).at(-1)?.length ?? 0;
+        ui.message.setRangeText('', start === end ? start - previous : start, end, 'end');
+      } else {
+        const character = key === 'Spasi' ? ' ' : key;
+        if (value.length - (end - start) + character.length > maxLength) return;
+        ui.message.setRangeText(character, start, end, 'end');
+      }
+      ui.message.focus({ preventScroll: true });
+      ui.message.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
   let composerFrame;
   function resizeComposer() {
     cancelAnimationFrame(composerFrame);
@@ -152,7 +243,10 @@ async function start() {
     ui.chat.toggleAttribute('data-open', open);
     ui.chatToggle.setAttribute('aria-expanded', String(open));
     ui.chatToggle.setAttribute('aria-label', open ? 'Close Chat' : 'Open Chat');
-    if (!open) return;
+    if (!open) {
+      showKeyboard(false);
+      return;
+    }
     ui.message.focus({ preventScroll: true });
     ui.messages.scrollTop = ui.messages.scrollHeight;
     composer(session);
