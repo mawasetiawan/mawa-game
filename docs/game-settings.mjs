@@ -1,6 +1,7 @@
 export const DEVELOPER_EMAIL = 'mawadatulsetiawan@gmail.com';
 
 export const fields = {
+  hudScale: { label: 'Ukuran HUD', min: 75, max: 125, value: 90, step: 5, unit: '%' },
   autoFov: { label: 'FOV mengikuti jarak zoom', value: true },
   baseFov: { label: 'FOV tetap', min: 35, max: 95, value: 58 },
   minFov: { label: 'Min FOV · kamera dekat', min: 35, max: 95, value: 46 },
@@ -22,6 +23,7 @@ export const fields = {
 };
 
 const categories = {
+  Tampilan: { HUD: ['hudScale'] },
   Kamera: {
     'Field of View': ['autoFov', 'baseFov', 'minFov', 'maxFov'],
     'Zoom & Orbit': ['zoomMin', 'zoomMax', 'orbitSpeed', 'zoomSpeed'],
@@ -93,10 +95,10 @@ export function mountDeveloperPanel(world, save, current, signal) {
           label.className = 'range-field';
           input.min = field.min;
           input.max = field.max;
-          input.step = key === 'dashSeconds' ? '0.05' : key.endsWith('Fov') ? '1' : '0.1';
+          input.step = field.step ?? (key === 'dashSeconds' ? '0.05' : key.endsWith('Fov') ? '1' : '0.1');
           const heading = document.createElement('span');
           const value = document.createElement('output');
-          const updateValue = () => { value.value = input.value + (key.endsWith('Fov') ? '°' : ''); };
+          const updateValue = () => { value.value = input.value + (field.unit ?? (key.endsWith('Fov') ? '°' : '')); };
           heading.append(field.label, value);
           label.append(heading, input);
           input.addEventListener('input', updateValue, { signal });
@@ -117,7 +119,12 @@ export function mountDeveloperPanel(world, save, current, signal) {
     inputs.get('maxFov').input.disabled = !automatic;
   };
   inputs.get('autoFov').input.addEventListener('change', updateFovFields, { signal });
+  const scale = inputs.get('hudScale').input;
+  scale.addEventListener('input', () => {
+    world.style.setProperty('--hud-preview-scale', scale.valueAsNumber / 100);
+  }, { signal });
   const close = () => {
+    world.style.removeProperty('--hud-preview-scale');
     panel.hidden = true;
     toggle.setAttribute('aria-expanded', 'false');
   };

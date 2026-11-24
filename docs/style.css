@@ -153,3 +153,14 @@ html{touch-action:manipulation}
 .login-choice p:empty{display:none}
 .login-choice a{display:grid;place-items:center;min-height:2.75rem;padding:.45rem .8rem;border:1px solid #385170;border-radius:.55rem;color:inherit;background:#244d77;text-decoration:none;text-align:center}
 .login-choice form{justify-content:flex-end}
+
+/* Scale gameplay controls around their anchored edges and keep the sliders readable. */
+.gameplay-hud{--hud-size:var(--hud-preview-scale,var(--hud-scale,.9))}
+.gameplay-hud .hud-tag,.gameplay-hud .world-toolbar,.gameplay-hud .actions{zoom:var(--hud-size)}
+.gameplay-hud .joystick{width:calc(clamp(80px,16vw,124px) * var(--hud-size))}
+.gameplay-hud .chat.panel{transform:translateX(-50%) scale(var(--hud-size));transform-origin:center bottom}
+.gameplay-hud .actions,.gameplay-hud .actions *{touch-action:none}
+@media(max-height:530px){.gameplay-hud .joystick{width:calc(80px * var(--hud-size))}}
+html.immersive-game,html.immersive-game body{background:#48677d}
+.world.immersive-map{height:auto}
+.world.immersive-map .developer-panel{top:calc(max(12px,env(safe-area-inset-top)) + 54px);right:max(12px,env(safe-area-inset-right));max-height:calc(100% - max(12px,env(safe-area-inset-top)) - max(12px,env(safe-area-inset-bottom)) - 54px)}

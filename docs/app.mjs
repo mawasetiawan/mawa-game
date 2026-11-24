@@ -1,4 +1,4 @@
-import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel } from './game-settings.mjs?v=3';
+import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel } from './game-settings.mjs?v=4';
 import { createLoginHandoff } from './login-handoff.mjs';
 import { firebaseConfig } from './config.mjs';
 import { connectMapReplication } from './map-replication.mjs?v=2';
@@ -57,25 +57,32 @@ async function start() {
   const { ref, push, set, remove, get, onValue, onDisconnect, query, orderByKey, limitToLast } = data;
   let session;
   const settings = { ...defaults };
+  const applySettings = values => {
+    Object.assign(settings, parseSettings(values));
+    ui.world.style.setProperty('--hud-scale', settings.hudScale / 100);
+  };
+  applySettings(defaults);
   const settingsRef = ref(db, 'gameSettings');
-  fetch('./settings.json?v=1').then(response => {
+  fetch('./settings.json?v=hud1').then(response => {
     if (!response.ok) throw Error('Settings snapshot unavailable');
     return response.json();
   }).then(snapshot => {
-    if (!liveSettings) Object.assign(settings, parseSettings(snapshot));
+    if (!liveSettings) applySettings(snapshot);
   }).catch(error => console.warn(error));
   let liveSettings = false;
   onValue(settingsRef, snapshot => {
     if (!snapshot.exists()) return;
     liveSettings = true;
-    Object.assign(settings, parseSettings(snapshot.val()));
+    applySettings(snapshot.val());
   }, error => console.error('Settings read:', error));
 
   const fullscreen = ui.fullscreen;
   const nativeFullscreen = () => document.fullscreenElement === ui.world || document.webkitFullscreenElement === ui.world;
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   const iphone = /iPhone|iPod/.test(navigator.userAgent);
+  const themeColor = document.querySelector('meta[name=theme-color]');
   function setImmersive(enabled) {
+    themeColor.content = enabled ? '#48677d' : '#101e26';
     ui.world.classList.toggle('immersive-map', enabled);
     document.documentElement.classList.toggle('immersive-game', enabled);
     updateFullscreen();
@@ -198,7 +205,7 @@ async function start() {
     if (active.user.emailVerified && active.user.email === DEVELOPER_EMAIL) {
       mountDeveloperPanel(ui.world, next => set(settingsRef, next), settings, exploration.signal);
     }
-    import('./explore.mjs?v=5').then(({ mountExploration }) => {
+    import('./explore.mjs?v=6').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
       return mountExploration(ui.world, exploration.signal, replication, settings);
