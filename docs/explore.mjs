@@ -1,4 +1,4 @@
-import { resolveFov } from './game-settings.mjs?v=3';
+import { resolveFov } from './game-settings.mjs?v=4';
 import { bindOrbit } from './orbit.mjs?v=1';
 import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=2';
 
@@ -144,10 +144,11 @@ export async function mountExploration(world, signal, replication, settings) {
   jump.addEventListener('click', event => {
     if (event.detail === 0 && !event.pointerType) requestJump();
   }, options);
-  walk.addEventListener('click', () => {
+  function toggleWalk() {
     input.walk = !input.walk;
     walk.setAttribute('aria-pressed', String(input.walk));
-  }, options);
+  }
+  walk.addEventListener('click', toggleWalk, options);
   sprint.addEventListener('pointerdown', event => {
     if (sprintPointer !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
     sprintPointer = event.pointerId;
@@ -159,6 +160,16 @@ export async function mountExploration(world, signal, replication, settings) {
     }, options);
   }
   interaction.addEventListener('click', interact, options);
+
+  // Cancel iOS's synthetic tap on action buttons. Touchend dispatches click-only
+  // actions here, while Jump and Sprint keep their pointer-based controls.
+  actions.addEventListener('touchend', event => {
+    const button = event.target.closest('button[data-action]');
+    if (!button || !event.cancelable) return;
+    event.preventDefault();
+    if (button === walk) toggleWalk();
+    if (button === interaction) interact();
+  }, { signal, passive: false });
 
   const observer = new ResizeObserver(resize);
   observer.observe(canvas);
