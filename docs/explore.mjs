@@ -1,7 +1,7 @@
 import { createAttackAudio } from './combat-audio.mjs';
-import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=6';
+import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=7';
 import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs?v=2';
-import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=2';
+import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=3';
 import { createCameraRig } from './camera-rig.mjs';
 import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=3';
 
@@ -41,8 +41,7 @@ export async function mountExploration(world, signal, replication, settings, get
   const spawnAngle = replication.spawnAngle / 4294967296 * Math.PI * 2;
   actor.x = Math.cos(spawnAngle) * 3;
   actor.z = Math.sin(spawnAngle) * 3;
-  const sharedCombat = combatPanel?.applied ?? combatSettings();
-  const combatConfig = { ...sharedCombat };
+  const combatConfig = combatPanel?.applied ?? combatSettings();
   const defaultSpawn = { x: actor.x, z: actor.z };
   Object.assign(actor, combatConfig.spawn ?? {});
   const tickCues = createCameraCues(world, signal);
@@ -61,9 +60,10 @@ export async function mountExploration(world, signal, replication, settings, get
   const playSound = createAttackAudio(signal);
   const combat = createCombat(actor, combatConfig, defaultSpawn, slot => characterEditor?.duration(slot),
     () => triggerCameraCue(world, 'shake'), resetControls, playerId,
-    kind => combatPanel?.solo?.()?.actions[kind]?.shake,
+    kind => combatConfig.actions[kind]?.shake,
     slot => characterEditor?.attackMotion(slot),
-    kind => playSound(combatPanel?.audio?.[kind]));
+    kind => playSound(combatPanel?.audio?.[kind]),
+    () => (replication.preview ? combatConfig : combatPanel?.shared ?? combatConfig).actions);
   const editing = () => world.hasAttribute('data-edit-hud') || world.hasAttribute('data-edit-spawn');
   const control = mountCombatHud(world, actions, signal, {
     press(id) { if (!editing()) { previewFighting = true; combat.press(id); } },
@@ -226,8 +226,6 @@ export async function mountExploration(world, signal, replication, settings, get
   function animate(now) {
     const dt = Math.min((now - previous) / 1000, 0.05);
     previous = now;
-    const inMultiplayer = replication.players.size > Number(replication.players.has('training'));
-    Object.assign(combatConfig, (!inMultiplayer && combatPanel?.solo?.()) || sharedCombat);
     if (training) {
       trainingPlayers.set(playerId, { ...actor, receivedAt: now, connection: 'local' });
       const dx = actor.x - dummy.x, dz = actor.z - dummy.z;

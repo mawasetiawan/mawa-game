@@ -187,6 +187,7 @@ export function mountCharacterPanel(world, signal, preset) {
   const library = new Map([['capsule', { name: 'Capsule bawaan' }]]);
   let current = 'capsule', serial = 0, runtime, preview = '', pending = false, exporting = false;
   const stateInputs = new Map();
+  let draft;
   const collection = document.createElement('div');
   collection.className = 'camera-buttons';
   function button(text, action) {
@@ -359,7 +360,7 @@ export function mountCharacterPanel(world, signal, preset) {
     const field = document.createElement('input');
     Object.assign(field, {type:'number', min, max, step});
     field.addEventListener('input', () => {
-      if (field.checkValidity() && Number.isFinite(field.valueAsNumber)) library.get(current).options[key] = field.valueAsNumber;
+      if (field.checkValidity() && Number.isFinite(field.valueAsNumber)) draft.options[key] = field.valueAsNumber;
     },{signal});
     label.append(name, field);
     controls.append(label);
@@ -382,7 +383,7 @@ export function mountCharacterPanel(world, signal, preset) {
         const select = document.createElement('select');
         select.setAttribute('aria-label', 'Animasi ' + groupName + ' ' + name);
         select.addEventListener('change', () => {
-          const { mapping } = library.get(current);
+          const { mapping } = draft;
           if (select.value === '') delete mapping[key];
           else mapping[key] = select.value;
           preview = '';
@@ -395,7 +396,7 @@ export function mountCharacterPanel(world, signal, preset) {
         loop.type = 'checkbox';
         loop.setAttribute('aria-label', 'Loop ' + groupName + ' ' + name);
         loop.disabled = ['fall', 'death'].includes(key);
-        loop.addEventListener('change', () => { library.get(current).loops[key] = loop.checked; }, { signal });
+        loop.addEventListener('change', () => { draft.loops[key] = loop.checked; }, { signal });
         loopLabel.append(key === 'fall' ? 'Loop sampai mendarat' : 'Loop', loop);
         group.append(loopLabel);
         stateInputs.set(key, { select, loop });
@@ -431,13 +432,23 @@ export function mountCharacterPanel(world, signal, preset) {
   rootNodeLabel.append('Bone root motion', rootSelect);
   controls.append(rootLabel, rootNodeLabel);
   rootToggle.addEventListener('change', () => {
-    const asset = library.get(current);
-    asset.rootMotion.enabled = rootToggle.checked;
+    draft.rootMotion.enabled = rootToggle.checked;
     rootSelect.disabled = !rootToggle.checked;
   }, { signal });
   rootSelect.addEventListener('change', () => {
-    library.get(current).rootMotion.node = rootSelect.value;
+    draft.rootMotion.node = rootSelect.value;
   }, { signal });
+
+  const apply = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Apply Setting' });
+  apply.addEventListener('click', () => {
+    const asset = library.get(current);
+    if (!asset.scene || pending) return;
+    const invalid = Object.values(settings).find(input => !input.checkValidity() || !Number.isFinite(input.valueAsNumber));
+    if (invalid) { invalid.reportValidity(); return; }
+    Object.assign(asset, structuredClone(draft));
+    status.textContent = 'Karakter dan animasi diterapkan ke pemain lokal.';
+  }, { signal });
+  controls.append(apply);
 
   function render() {
     const asset = library.get(current);
@@ -452,6 +463,7 @@ export function mountCharacterPanel(world, signal, preset) {
     showSizeWarning(0);
     preview = '';
     if (!asset.scene) return;
+    draft = structuredClone({ options: asset.options, mapping: asset.mapping, loops: asset.loops, rootMotion: asset.rootMotion });
     rootToggle.checked = asset.rootMotion.enabled;
     rootSelect.replaceChildren(new Option('Otomatis (Root / Armature)', ''),
       ...runtime.motionNodes(asset).map(name => new Option(name, name)));
@@ -517,8 +529,8 @@ export function mountCharacterPanel(world, signal, preset) {
 
   return {
     networkState() {
-      const asset = library.get(current);
-      return asset.packageId && { id: asset.packageId };
+      const id = preset?.package;
+      return typeof id === 'string' && packageName.test(id) ? { id } : undefined;
     },
     createPeer(THREE, scene) {
       const view = createCharacterView(THREE, scene);
@@ -559,6 +571,7 @@ export function mountCharacterPanel(world, signal, preset) {
       };
     },
     snapshot() {
+      if (pending) throw Error('Tunggu sampai karakter selesai dimuat sebelum ekspor.');
       const asset = library.get(current);
       if (!asset.scene) return null;
       if (!asset.packageId) throw Error('Ekspor karakter aktif lewat Save as Character dan upload paketnya sebelum menyimpan pengaturan.');

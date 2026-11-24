@@ -1,10 +1,10 @@
-import { loadDeveloperConfig, mountDeveloperConfigPanel } from './developer-config.mjs';
-import { mountCombatPanel } from './combat.mjs?v=6';
-import { mountCharacterPanel } from './character-editor.mjs?v=7';
-import { mountCameraCuePanel } from './camera-cues.mjs?v=2';
-import { mountHudEditor } from './hud-editor.mjs?v=3';
-import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=2';
-import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=config';
+import { loadDeveloperConfig, mountDeveloperConfigPanel } from './developer-config.mjs?v=2';
+import { mountCombatPanel } from './combat.mjs?v=7';
+import { mountCharacterPanel } from './character-editor.mjs?v=8';
+import { mountCameraCuePanel } from './camera-cues.mjs?v=3';
+import { mountHudEditor } from './hud-editor.mjs?v=4';
+import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=3';
+import { defaults, parseSettings, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=apply';
 import { createLoginHandoff } from './login-handoff.mjs';
 import { firebaseConfig } from './config.mjs';
 import { connectMapReplication } from './map-replication.mjs?v=4';
@@ -102,36 +102,16 @@ async function start() {
     refreshSettings(auth.currentUser);
   };
   refreshSettings(auth.currentUser);
-  const settingsRef = ref(db, 'gameSettings');
-  const cameraRef = ref(db, 'cameraSettings');
-  let sharedCamera = parseCamera(published.camera);
+  const sharedCamera = parseCamera(published.camera);
   const personalCameras = new Map();
-  const isDeveloper = user => user?.emailVerified && user.email === DEVELOPER_EMAIL;
-  const getCamera = () => {
-    const user = auth.currentUser;
-    return personalCameras.get(user?.uid) ?? sharedCamera;
-  };
-  let firstCamera = true;
-  onValue(cameraRef, snapshot => {
-    if (!firstCamera || !published.camera) sharedCamera = parseCamera(snapshot.val());
-    firstCamera = false;
-  },
-    error => console.warn('Camera settings:', error));
-  fetch('./settings.json?v=hud1').then(response => {
-    if (!response.ok) throw Error('Settings snapshot unavailable');
-    return response.json();
-  }).then(snapshot => {
-    if (!liveSettings && !published.game) applySettings(snapshot);
-  }).catch(error => console.warn(error));
-  let liveSettings = false;
-  onValue(settingsRef, snapshot => {
-    if ((!liveSettings && published.game) || !snapshot.exists()) {
-      liveSettings = true;
-      return;
-    }
-    liveSettings = true;
-    applySettings(snapshot.val());
-  }, error => console.error('Settings read:', error));
+  const personalDeveloper = new Map();
+  const getCamera = () => personalCameras.get(auth.currentUser?.uid) ?? sharedCamera;
+  if (!published.game) {
+    fetch('./settings.json?v=hud1').then(response => {
+      if (!response.ok) throw Error('Settings snapshot unavailable');
+      return response.json();
+    }).then(applySettings).catch(error => console.warn(error));
+  }
 
   const fullscreen = ui.fullscreen;
   const nativeFullscreen = () => document.fullscreenElement === ui.world || document.webkitFullscreenElement === ui.world;
@@ -342,44 +322,43 @@ async function start() {
     const exploration = new AbortController();
     active.exploration = exploration;
     const uid = active.user.uid;
-    const canShare = isDeveloper(active.user);
-    const saveSettings = canShare ? next => set(settingsRef, next) : (_next, changes) => {
+    const personal = personalDeveloper.get(uid) ?? {};
+    personalDeveloper.set(uid, personal);
+    const applyLocal = (_next, changes) => {
       personalSettings.set(uid, { ...personalSettings.get(uid), ...changes });
       refreshSettings(active.user);
     };
-    mountDeveloperPanel(ui.world, saveSettings, settings, exploration.signal, uid, canShare);
-    const effects = mountCameraCuePanel(ui.world, exploration.signal, published.effects);
-    const hud = mountHudEditor(ui.world, exploration.signal, uid, published.hud);
-    mountCameraPanel(ui.world, {
+    mountDeveloperPanel(ui.world, applyLocal, settings, exploration.signal, uid);
+    const effects = mountCameraCuePanel(ui.world, exploration.signal, personal.effects ?? published.effects,
+      next => { personal.effects = next; });
+    const hud = mountHudEditor(ui.world, exploration.signal, personal.hud ?? published.hud,
+      next => { personal.hud = next; });
+    const camera = mountCameraPanel(ui.world, {
       current: getCamera,
-      applyLocal: next => personalCameras.set(uid, next),
-      applyShared: canShare ? async next => {
-        await set(cameraRef, next);
+      presets: personal.cameraPresets ?? published.cameraPresets,
+      applyLocal: (next, presets) => {
+        personalCameras.set(uid, next);
+        personal.cameraPresets = presets;
+      },
+      clearLocal: () => {
         personalCameras.delete(uid);
-      } : undefined,
-      clearLocal: () => personalCameras.delete(uid),
+        delete personal.cameraPresets;
+      },
     }, exploration.signal);
     const characterEditor = mountCharacterPanel(ui.world, exploration.signal, published.character);
-    const combatRef = ref(db, 'combatSettings');
-    let firstCombat = true;
-    const combat = mountCombatPanel(ui.world, exploration.signal, uid, {
-      initial: published.combat,
-      watch: update => onValue(combatRef, snapshot => {
-        if (!firstCombat || !published.combat) update(snapshot.val());
-        firstCombat = false;
-      }, error => console.error('Combat settings:', error)),
-      save: canShare ? next => set(combatRef, next) : undefined,
-    });
+    const combat = mountCombatPanel(ui.world, exploration.signal, published.combat, personal.combat,
+      next => { personal.combat = next; });
     mountDeveloperConfigPanel(ui.world, exploration.signal, () => ({
       game: parseSettings(settings),
       camera: parseCamera(getCamera()),
+      cameraPresets: camera.snapshot(),
       effects: effects.snapshot(),
       hud: hud.snapshot(),
-      combat: { ...combat.draft, audio: combat.audio },
+      combat: combat.snapshot(),
       character: characterEditor.snapshot(),
     }));
     mountDeveloperTabs(ui.world, exploration.signal);
-    import('./explore.mjs?v=16').then(({ mountExploration }) => {
+    import('./explore.mjs?v=17').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
       return mountExploration(ui.world, exploration.signal, replication, settings, getCamera, characterEditor, combat,

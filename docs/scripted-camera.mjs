@@ -87,7 +87,7 @@ export function downloadCameraModule(cameraModes) {
     'blend {enter,exit,input,state}, masing-masing 0–3 detik. enter/exit untuk perpindahan mode, input untuk melunakkan drag/zoom, state untuk binding dan rotasi ruang relatif. Gunakan 0 agar langsung.',
     'Pilihan sumber: JSON dibaca langsung. C++, Java dan Luau diterima sebagai pembawa satu blok JSON, bukan native runtime. Letakkan JSON di antara marker berikut dalam komentar /* ... */ untuk .cpp/.java atau --[[ ... ]] untuk .luau. Kode di luar blok diabaikan. Maksimum file 16384 byte.',
     'MAWA_CAMERA_JSON_BEGIN\n' + JSON.stringify(exampleScript, null, 2) + '\nMAWA_CAMERA_JSON_END',
-    'UI kamera dibuat dari cameraModes di docs/camera-settings.mjs. Tombol scope memakai handler applyLocal dan applyShared. Untuk modifikasi UI game, perlu perubahan source; import hanya memasok timeline. Schema pengaturan aktual dari build ini:',
+    'UI kamera dibuat dari cameraModes di docs/camera-settings.mjs. Tombol Apply Setting memakai handler applyLocal. Publikasi setelan memakai developer-settings.json di GitHub. Untuk modifikasi UI game, perlu perubahan source; import hanya memasok timeline. Schema pengaturan aktual dari build ini:',
     JSON.stringify(cameraModes, null, 2),
   ].join('\n\n');
   const url = URL.createObjectURL(new Blob([module], { type: 'text/markdown;charset=utf-8' }));

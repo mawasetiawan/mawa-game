@@ -67,7 +67,7 @@ export function parseSettings(values) {
   return clean;
 }
 
-export function mountDeveloperPanel(world, save, current, signal, developerUid, canShare = true) {
+export function mountDeveloperPanel(world, applyLocal, current, signal, developerUid) {
   const toggle = world.querySelector('#openDeveloper');
   const panel = world.querySelector('#developerPanel');
   const form = panel.querySelector('form');
@@ -76,7 +76,7 @@ export function mountDeveloperPanel(world, save, current, signal, developerUid, 
   const inputs = new Map();
   const saveButton = form.querySelector('button[type=submit]');
   const previousSaveText = saveButton.lastChild.textContent;
-  if (!canShare) saveButton.lastChild.textContent = 'Simpan Lokal';
+  saveButton.lastChild.textContent = 'Apply Setting';
   function disclosure(parent, name) {
     const details = document.createElement('details');
     const summary = document.createElement('summary');
@@ -159,7 +159,7 @@ export function mountDeveloperPanel(world, save, current, signal, developerUid, 
     panel.hidden = false;
     toggle.setAttribute('aria-expanded', 'true');
   }
-  async function persist(keys, status, submit) {
+  async function applyFields(keys, status, submit) {
     const changes = Object.fromEntries(keys.map(key => {
       const { input } = inputs.get(key);
       return [key, input.type === 'checkbox' ? input.checked : input.valueAsNumber];
@@ -178,26 +178,29 @@ export function mountDeveloperPanel(world, save, current, signal, developerUid, 
       return;
     }
     submit.disabled = true;
-    status.textContent = 'Menyimpan…';
+    status.textContent = 'Menerapkan…';
     try {
-      await save(next, changes);
-      if (!signal.aborted) status.textContent = canShare ? 'Tersimpan dan berlaku untuk semua pemain.' : 'Tersimpan untuk sesi ini.';
+      await applyLocal(next, changes);
+      if (Object.hasOwn(changes, 'hudScale')) world.style.removeProperty('--hud-preview-scale');
+      if (!signal.aborted) status.textContent = 'Pengaturan diterapkan ke pemain lokal.';
     } catch (error) {
       console.error(error);
-      if (!signal.aborted) status.textContent = 'Gagal menyimpan pengaturan. Coba lagi.';
+      if (!signal.aborted) status.textContent = 'Pengaturan gagal diterapkan.';
     } finally { submit.disabled = false; }
   }
 
   const movementStatus = Object.assign(document.createElement('p'), { role: 'status' });
   const movementSave = Object.assign(document.createElement('button'), {
-    type: 'button', textContent: canShare ? 'Simpan Movement' : 'Simpan Movement Lokal',
+    type: 'button', textContent: 'Apply Setting',
   });
-  movementSave.addEventListener('click', () => void persist(movementKeys, movementStatus, movementSave), { signal });
+  movementSave.addEventListener('click', () => void applyFields(movementKeys, movementStatus, movementSave), { signal });
   movementSection.append(movementSave, movementStatus);
   form.addEventListener('submit', event => {
     event.preventDefault();
     if (saveButton.hidden || saveButton.disabled) return;
-    void persist([...inputs.keys()].filter(key => !movementKeys.includes(key)), output, saveButton);
+    const selected = panel.querySelector('[role=tab][aria-selected=true]')?.id;
+    const category = selected === 'developer-tab-hud' ? 'Tampilan' : 'Kamera';
+    void applyFields(Object.values(categories[category]).flat(), output, saveButton);
   }, { signal });
   signal.addEventListener('abort', () => {
     close();

@@ -82,11 +82,9 @@ export function sanitizeHudLayout(value) {
   return result;
 }
 
-export function mountHudEditor(world, signal, namespace, preset) {
-  const storageKey = 'mawa.hud-layout.v1.' + namespace;
-  let saved;
-  try { saved = JSON.parse(localStorage.getItem(storageKey)); } catch { /* Use defaults. */ }
-  let layouts = sanitizeHudLayout(preset ?? saved);
+export function mountHudEditor(world, signal, preset, applyLocal) {
+  let applied = sanitizeHudLayout(preset);
+  let layouts = sanitizeHudLayout(applied);
   const hud = world.querySelector('.gameplay-hud');
   const panel = world.querySelector('#developerPanel');
   const touch = matchMedia('(pointer: coarse)');
@@ -147,7 +145,7 @@ export function mountHudEditor(world, signal, namespace, preset) {
   function apply() {
     restore();
     const bounds = stageFrame();
-    for (const [key, value] of Object.entries(layouts[active ? profile.value : currentProfile()])) {
+    for (const [key, value] of Object.entries((active ? layouts : applied)[active ? profile.value : currentProfile()])) {
       const node = nodes[key];
       if (!node) continue;
       const dx = value.x * bounds.width / 100;
@@ -309,9 +307,12 @@ export function mountHudEditor(world, signal, namespace, preset) {
     delete layouts[profile.value][element.value];
     sync();
   });
-  button('Simpan Layout Lokal', () => {
-    try { localStorage.setItem(storageKey,JSON.stringify(layouts)); status.textContent = 'Layout tersimpan di browser ini.'; }
-    catch { status.textContent = 'Layout tidak bisa disimpan di browser ini.'; }
+  button('Apply Setting', () => {
+    applied = sanitizeHudLayout(layouts);
+    applyLocal?.(applied);
+    setEditing(false);
+    apply();
+    status.textContent = 'Layout HUD diterapkan ke pemain lokal.';
   });
   world.addEventListener('pointerdown', event => {
     if (!active || !hud.contains(event.target) || panel.contains(event.target)) return;
@@ -386,5 +387,5 @@ export function mountHudEditor(world, signal, namespace, preset) {
     outline.remove();
   },{once:true});
   apply();
-  return { snapshot: () => sanitizeHudLayout(layouts) };
+  return { snapshot: () => sanitizeHudLayout(applied) };
 }

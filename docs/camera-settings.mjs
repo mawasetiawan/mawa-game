@@ -1,4 +1,4 @@
-import { decodeCameraScript, mountScriptImport } from './scripted-camera.mjs';
+import { decodeCameraScript, mountScriptImport } from './scripted-camera.mjs?v=2';
 
 export const cameraModes = {
   scripted: { label: 'Scripted Camera', fields: { smoothing: ['Smoothing', 0, 2, 0.12] } },
@@ -57,7 +57,7 @@ export function parseCamera(value) {
   return clean;
 }
 
-export function mountCameraPanel(world, { current, applyLocal, applyShared, clearLocal }, signal) {
+export function mountCameraPanel(world, { current, presets, applyLocal, clearLocal }, signal) {
   const host = world.querySelector('.developer-fields');
   const section = document.createElement('details');
   const title = document.createElement('summary');
@@ -70,9 +70,12 @@ export function mountCameraPanel(world, { current, applyLocal, applyShared, clea
   status.setAttribute('role', 'status');
   const buttons = document.createElement('div');
   buttons.className = 'camera-buttons';
-  const drafts = new Map();
+  const applied = new Map(Object.keys(cameraModes).filter(mode => presets?.[mode]?.mode === mode)
+    .map(mode => [mode, parseCamera(presets[mode])]));
+  const drafts = new Map([...applied].map(([mode, value]) => [mode, { ...value }]));
   let active = parseCamera(current());
   drafts.set(active.mode, active);
+  applied.set(active.mode, { ...active });
   select.value = active.mode;
 
   function render() {
@@ -137,14 +140,18 @@ export function mountCameraPanel(world, { current, applyLocal, applyShared, clea
   controls.addEventListener('keydown', event => {
     if (event.key === 'Enter') event.preventDefault();
   }, { signal });
-  action(applyShared ? 'Terapkan untuk Developer' : 'Terapkan untuk Saya', applyLocal, 'Kamera diterapkan hanya di layar ini.');
-  if (applyShared) action('Terapkan ke Semua Pemain', applyShared, 'Pengaturan bersama diterapkan.');
+  const snapshot = () => Object.fromEntries(applied);
+  action('Apply Setting', next => {
+    applied.set(next.mode, next);
+    return applyLocal(next, snapshot());
+  }, 'Kamera diterapkan ke pemain lokal.');
   const reset = document.createElement('button');
   reset.type = 'button';
   reset.textContent = 'Ikuti Kamera Bersama';
   reset.addEventListener('click', () => {
     clearLocal();
     const next = parseCamera(current());
+    applied.set(next.mode, { ...next });
     drafts.set(next.mode, next);
     select.value = next.mode;
     render();
@@ -154,4 +161,5 @@ export function mountCameraPanel(world, { current, applyLocal, applyShared, clea
   section.append(title, select, controls, buttons, status);
   host.prepend(section);
   render();
+  return { snapshot };
 }

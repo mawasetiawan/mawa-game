@@ -60,7 +60,7 @@ export function createCameraCues(world, signal) {
   };
 }
 
-export function mountCameraCuePanel(world, signal, preset) {
+export function mountCameraCuePanel(world, signal, preset, applyLocal) {
   const initial = {};
   for (const [kind, defaults] of Object.entries(cameraCueDefaults)) {
     const options = preset?.[kind];
@@ -69,7 +69,7 @@ export function mountCameraCuePanel(world, signal, preset) {
       key, typeof options[key] === typeof value && (typeof value !== 'number' || Number.isFinite(options[key])) ? options[key] : value,
     ]));
   }
-  if (Object.keys(initial).length) configured.set(world, initial);
+  configured.set(world, initial);
   const section = document.createElement('details');
   const summary = document.createElement('summary');
   summary.textContent = 'Camera Shake & Fade';
@@ -122,9 +122,10 @@ export function mountCameraCuePanel(world, signal, preset) {
       actions.append(control);
     };
     button('Uji ' + title.textContent, options => triggerCameraCue(world, kind, options));
-    button('Terapkan Default', options => {
+    button('Apply Setting', options => {
       configured.set(world, { ...configured.get(world), [kind]: options });
-      status.textContent = 'Default sesi lokal diterapkan. Opsi event tetap bisa menimpanya.';
+      applyLocal?.(configured.get(world));
+      status.textContent = 'Efek kamera diterapkan ke pemain lokal.';
     });
     group.append(actions, status);
     section.append(group);

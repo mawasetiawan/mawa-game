@@ -51,7 +51,7 @@ export function touchesAttack(origin, target, attack) {
   return Math.hypot(target.x - x, target.z - z, capsuleY - y) <= bodyRadius + strikeRadius;
 }
 
-export function createCombat(actor, settings, fallbackSpawn, animationDuration, onShake, onControlReset, identity = 'local', shakeEnabled, attackMotion, onAttack) {
+export function createCombat(actor, settings, fallbackSpawn, animationDuration, onShake, onControlReset, identity = 'local', shakeEnabled, attackMotion, onAttack, sharedActions = () => settings.actions) {
   let clock = 0, serial = 0, swing, combo, respawnAt = 0;
   let stunUntil = 0, slowUntil = 0, graceUntil = 0, impactUntil = 0;
   const connections = new Map();
@@ -188,8 +188,9 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
       if (!attack || pose.hp === 0 || now - pose.receivedAt > 280) continue;
       const last = connections.get(uid);
       if (last?.connection === pose.connection && last.id >= attack.id) continue;
-      if (!Object.hasOwn(settings.actions, attack.kind)) continue;
-      if (receive(pose, { ...settings.actions[attack.kind], kind: attack.kind, yaw: attack.yaw })) {
+      const rules = sharedActions();
+      if (!Object.hasOwn(rules, attack.kind)) continue;
+      if (receive(pose, { ...rules[attack.kind], kind: attack.kind, yaw: attack.yaw })) {
         connections.set(uid, { connection: pose.connection, id: attack.id });
         const impacts = { ...actor.impacts, [uid]: attack.id };
         actor.impacts = Object.fromEntries(Object.entries(impacts).slice(-8));
@@ -241,25 +242,14 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
   };
 }
 
-export function mountCombatPanel(world, signal, uid, shared) {
-  const key = 'mawa-combat-v1:' + uid;
-  let raw;
-  const local = !shared?.save;
-  if (local) {
-    try { raw = JSON.parse(localStorage.getItem(key)); } catch {}
-  }
-  const settings = combatSettings(raw ?? shared?.initial);
-  const applied = shared ? combatSettings(shared.initial) : settings;
-  const draftFields = [];
-  const localPreset = raw ? combatSettings(raw) : null;
-  let solo = localPreset;
-  let pending = false;
-  const soundKey = 'mawa-combat-audio-v1:' + uid;
-  let localAudio;
-  try { localAudio = JSON.parse(localStorage.getItem(soundKey)); } catch {}
-  const audio = audioSettings(localAudio ?? shared?.initial?.audio);
+export function mountCombatPanel(world, signal, preset, local, applyLocal) {
+  const settings = combatSettings(local ?? preset);
+  const applied = combatSettings(local ?? preset);
+  const shared = combatSettings(preset);
+  const audio = audioSettings((local ?? preset)?.audio);
+  const appliedAudio = { ...audio };
   const playSound = createAttackAudio(signal);
-  let loadingSounds = 0, audioEdited = false;
+  let loadingSounds = 0;
   const section = document.createElement('details');
   const heading = document.createElement('summary');
   heading.textContent = 'Combat';
@@ -275,7 +265,6 @@ export function mountCombatPanel(world, signal, uid, shared) {
       if (type === 'checkbox') input.checked = getValue();
       else input.value = getValue();
     }
-    draftFields.push(refresh);
     refresh();
     input.addEventListener('change', () => {
       if (type === 'number' && (!input.checkValidity() || !Number.isFinite(input.valueAsNumber))) {
@@ -340,7 +329,7 @@ export function mountCombatPanel(world, signal, uid, shared) {
       test.textContent = audio[id] ? 'Tes Suara' : 'Suara kosong';
     }
     const test = button(soundActions, 'Tes Suara', () => playSound(audio[id]));
-    const remove = button(soundActions, 'Hapus Suara', () => { audio[id] = ''; audioEdited = true; refreshSound(); });
+    const remove = button(soundActions, 'Hapus Suara', () => { audio[id] = ''; refreshSound(); });
     refreshSound();
     soundInput.addEventListener('change', async () => {
       const file = soundInput.files?.[0];
@@ -351,7 +340,7 @@ export function mountCombatPanel(world, signal, uid, shared) {
       try {
         const value = soundData(await readAttackSound(file));
         if (!value) throw Error('Suara tidak valid.');
-        if (!signal.aborted) { audio[id] = value; audioEdited = true; status.textContent = 'Suara siap. Pilih Simpan Combat untuk menyimpan di perangkat.'; }
+        if (!signal.aborted) { audio[id] = value; status.textContent = 'Suara siap. Tekan Apply Setting untuk memakainya.'; }
       } catch (error) {
         if (!signal.aborted) status.textContent = error.message;
       } finally {
@@ -363,8 +352,9 @@ export function mountCombatPanel(world, signal, uid, shared) {
     group.append(soundLabel, soundActions);
     section.append(group);
   }
-  const save = button(section, local && shared ? 'Simpan Combat Solo' : 'Simpan Combat', async () => {
-    if (pending || loadingSounds) return;
+  const snapshot = () => ({ ...combatSettings(applied), audio: { ...appliedAudio } });
+  button(section, 'Apply Setting', () => {
+    if (loadingSounds) return;
     const invalid = [...section.querySelectorAll('input')].find(input => !input.checkValidity() ||
       (input.type === 'number' && !Number.isFinite(input.valueAsNumber)));
     if (invalid) {
@@ -372,35 +362,12 @@ export function mountCombatPanel(world, signal, uid, shared) {
       invalid.reportValidity();
       return;
     }
-    pending = save.disabled = true;
-    try {
-      if (audioEdited) {
-        localStorage.setItem(soundKey, JSON.stringify(audio));
-        audioEdited = false;
-      }
-      if (shared?.save) {
-        await shared.save(combatSettings(settings));
-        status.textContent = 'Pengaturan combat diterapkan untuk semua pemain.';
-      } else {
-        localStorage.setItem(key, JSON.stringify(settings));
-        solo = combatSettings(settings);
-        status.textContent = shared ? 'Preset solo tersimpan di perangkat ini.' : 'Pengaturan tersimpan di perangkat ini.';
-      }
-    } catch {
-      status.textContent = shared?.save ? 'Pengaturan bersama gagal disimpan.' : 'Penyimpanan perangkat tidak tersedia.';
-    } finally { pending = save.disabled = false; }
+    Object.assign(applied, combatSettings(settings));
+    Object.assign(appliedAudio, audio);
+    applyLocal?.(snapshot());
+    status.textContent = 'Combat diterapkan ke pemain lokal. Damage dan efek untuk lawan online mengikuti konfigurasi GitHub.';
   });
-  if (local && shared) status.textContent = 'Preset ini berlaku saat kamu sendiri di map. Game Master mengatur Combat untuk semua pemain.';
   section.append(status);
   world.querySelector('.developer-fields').append(section);
-  const unwatch = shared?.watch(raw => {
-    Object.assign(applied, combatSettings(raw));
-    if (!local || !solo) {
-      Object.assign(settings, combatSettings(raw));
-      draftFields.forEach(refresh => refresh());
-      world.dispatchEvent(new Event('mawa:spawn-point'));
-    }
-  });
-  if (unwatch) signal.addEventListener('abort', unwatch, { once: true });
-  return { applied, draft: settings, solo: () => solo, audio };
+  return { applied, shared, draft: settings, audio: appliedAudio, snapshot };
 }
