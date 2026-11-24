@@ -224,6 +224,32 @@
               "pulse": {
                 ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 1000000000"
               },
+              "yaw": {
+                ".validate": "newData.isNumber() && newData.val() >= -3.15 && newData.val() <= 3.15"
+              },
+              "gait": {
+                ".validate": "newData.isString() && newData.val().matches(/^(stop|walk|run|jump|sprint|swim|rapid swim|fly|rapid fly|dash|teleport)$/)"
+              },
+              "state": {
+                ".validate": "newData.isString() && newData.val().matches(/^(grounded|in air|falling|on water|constrained)$/)"
+              },
+              "character": {
+                ".validate": "newData.isString() && newData.val().length <= 100 && newData.val().matches(/^[a-z0-9-]+[.]character[.]json([.]gz)?$/)"
+              },
+              "action": {
+                ".validate": "newData.isString() && newData.val().matches(/^(death|interact|(basic|skill1|skill2|ultimate)Combo[1-4])$/)"
+              },
+              "anim": {
+                ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 1000000000 && newData.val() % 1 == 0"
+              },
+              "warp": {
+                ".validate": "newData.isBoolean()"
+              },
+              "impacts": {
+                "$attacker": {
+                  ".validate": "$attacker.matches(/^[-0-9A-Z_a-z]{1,128}$/) && $attacker != auth.uid && newData.isNumber() && newData.val() >= 1 && newData.val() <= 1000000000 && newData.val() % 1 == 0"
+                }
+              },
               "attack": {
                 ".validate": "newData.hasChildren(['id', 'yaw', 'kind']) && newData.parent().child('hp').val() > 0 && newData.parent().child('pulse').exists()",
                 "id": {

@@ -1,4 +1,4 @@
-import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=4';
+import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=5';
 import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs';
 import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=2';
 import { createCameraRig } from './camera-rig.mjs';
@@ -56,8 +56,10 @@ export async function mountExploration(world, signal, replication, settings, get
   let scale = 1;
   let jumpUntil = 0;
 
+  const playerId = replication.uid ?? 'local';
   const combat = createCombat(actor, combatConfig, defaultSpawn, slot => characterEditor?.duration(slot),
-    () => triggerCameraCue(world, 'shake'), resetControls);
+    () => triggerCameraCue(world, 'shake'), resetControls, playerId,
+    kind => combatPanel?.solo?.()?.actions[kind]?.shake);
   const editing = () => world.hasAttribute('data-edit-hud') || world.hasAttribute('data-edit-spawn');
   const control = mountCombatHud(world, actions, signal, {
     press(id) { if (!editing()) { previewFighting = true; combat.press(id); } },
@@ -69,8 +71,13 @@ export async function mountExploration(world, signal, replication, settings, get
   const dummy = replication.preview ? createMovement() : null;
   const dummySpawn = { x: actor.x, z: Math.max(-49, actor.z - 1.65) };
   if (dummy) Object.assign(dummy, dummySpawn, { facingZ: 1, connection: 'preview' });
-  const training = dummy && createCombat(dummy, combatSettings(), dummySpawn, () => undefined, () => {}, () => {});
+  const training = dummy && createCombat(dummy, combatConfig, dummySpawn, () => undefined, () => {}, () => {}, 'training');
   const trainingPlayers = new Map();
+  const range = new THREE.Mesh(new THREE.RingGeometry(.975, 1, 64),
+    new THREE.MeshBasicMaterial({ color: 0xffc770, transparent: true, opacity: .85, depthWrite: false, side: THREE.DoubleSide }));
+  range.rotation.x = -Math.PI / 2;
+  range.visible = false;
+  scene.add(range);
 
   function interact() {
     if (editing() || !combat.interact()) return;
@@ -138,24 +145,6 @@ export async function mountExploration(world, signal, replication, settings, get
     const cos = Math.cos(angle), sin = Math.sin(angle);
     const x = event.clientX - bounds.left - bounds.width / 2;
     const y = event.clientY - bounds.top - bounds.height / 2;
-    Object.assign(combatConfig, (!replication.players.size && combatPanel?.solo?.()) || sharedCombat);
-    if (training) {
-      trainingPlayers.set('local', { ...actor, receivedAt: now, connection: 'local' });
-      const dx = actor.x - dummy.x, dz = actor.z - dummy.z;
-      const distance = Math.hypot(dx, dz);
-      if (previewFighting && actor.hp && distance <= 2.1 && distance > .01 && now >= nextDummyAttack) {
-        dummy.facingX = dx / distance;
-        dummy.facingZ = dz / distance;
-        training.press('basic');
-        nextDummyAttack = now + 1600;
-      }
-      training.tick(dt, now, trainingPlayers);
-      if (dummy.hp) stepMovement(dummy, { x: 0, z: 0 }, dt * training.timeScale(), settings);
-      dummy.receivedAt = now;
-      replication.players.set('training', dummy);
-    }
-    combat.tick(dt, now, replication.players);
-    control.update();
     const localX = (x * cos + y * sin) / (visualZoom * sx);
     const localY = (-x * sin + y * cos) / (visualZoom * sy);
     const localDistance = Math.hypot(localX, localY);
@@ -233,8 +222,10 @@ export async function mountExploration(world, signal, replication, settings, get
   function animate(now) {
     const dt = Math.min((now - previous) / 1000, 0.05);
     previous = now;
+    const inMultiplayer = replication.players.size > Number(replication.players.has('training'));
+    Object.assign(combatConfig, (!inMultiplayer && combatPanel?.solo?.()) || sharedCombat);
     if (training) {
-      trainingPlayers.set('local', { ...actor, receivedAt: now, connection: 'local' });
+      trainingPlayers.set(playerId, { ...actor, receivedAt: now, connection: 'local' });
       const dx = actor.x - dummy.x, dz = actor.z - dummy.z;
       const distance = Math.hypot(dx, dz);
       if (previewFighting && actor.hp && distance <= 2.1 && distance > .01 && now >= nextDummyAttack) {
@@ -268,7 +259,14 @@ export async function mountExploration(world, signal, replication, settings, get
     capsule.scale.y = localHeight;
     capsule.position.set(actor.x, actor.y + 0.9 * localHeight, actor.z);
     localMaterial.color.setHex(!actor.hp ? 0x5e7581 : actor.attack ? 0xf8bba0 : 0x8ed4ff);
-    replication.publish(actor, now);
+    capsule.rotation.y = Math.atan2(actor.facingX, actor.facingZ);
+    range.visible = Boolean(actor.range);
+    if (actor.range) {
+      range.position.set(actor.range.x, .033, actor.range.z);
+      range.scale.setScalar(actor.range.radius);
+      range.material.color.setHex(actor.attack ? 0xff9460 : 0xffce77);
+    }
+    replication.publish(actor, now, characterEditor?.networkState());
     const blend = 1 - Math.exp(-24 * dt);
     for (const [id, pose] of replication.players) {
       let mesh = remoteCapsules.get(id);
@@ -278,6 +276,8 @@ export async function mountExploration(world, signal, replication, settings, get
         mesh.position.set(pose.x, pose.y + 0.9 * height, pose.z);
         mesh.scale.y = height;
         remoteCapsules.set(id, mesh);
+        mesh.userData.characterView = characterEditor?.createPeer(THREE, scene);
+        mesh.rotation.y = pose.yaw ?? 0;
         scene.add(mesh);
       }
       // Predict briefly while snapshots are arriving, then settle at the last position.
@@ -292,9 +292,21 @@ export async function mountExploration(world, signal, replication, settings, get
       mesh.position.x = THREE.MathUtils.lerp(mesh.position.x, predictedX, poseBlend);
       mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, pose.y + 0.9 * mesh.scale.y, poseBlend);
       mesh.position.z = THREE.MathUtils.lerp(mesh.position.z, predictedZ, poseBlend);
+      if (Number.isFinite(pose.yaw)) {
+        const turn = pose.yaw - mesh.rotation.y;
+        mesh.rotation.y += Math.atan2(Math.sin(turn), Math.cos(turn)) * poseBlend;
+      }
+      mesh.visible = true;
+      mesh.userData.characterView?.update(pose.character, {
+        x: mesh.position.x, y: mesh.position.y - .9 * mesh.scale.y, z: mesh.position.z,
+        facingX: Math.sin(mesh.rotation.y), facingZ: Math.cos(mesh.rotation.y),
+        stance: pose.crouch ? Stance.CROUCH : Stance.STAND, state: pose.state,
+        gait: pose.gait, action: pose.action, actionSerial: pose.anim,
+      }, dt, mesh);
     }
     for (const [id, mesh] of remoteCapsules) {
       if (replication.players.has(id)) continue;
+      mesh.userData.characterView?.remove();
       scene.remove(mesh);
       remoteCapsules.delete(id);
       health.remove(id);
@@ -310,7 +322,7 @@ export async function mountExploration(world, signal, replication, settings, get
         actor.z, actor.hp, true);
     } else health.remove('local');
     for (const [id, mesh] of remoteCapsules) {
-      health.update(id, mesh.position.x, mesh.position.y + .9 * mesh.scale.y + .19, mesh.position.z,
+      health.update(id, mesh.position.x, mesh.position.y - .9 * mesh.scale.y + (mesh.userData.characterView?.height() ?? 1.8 * mesh.scale.y) + .19, mesh.position.z,
         replication.players.get(id)?.hp ?? maxHealth, false, id === 'training' ? 'Target latihan' : '');
     }
     renderer.render(scene, camera);
@@ -321,6 +333,9 @@ export async function mountExploration(world, signal, replication, settings, get
   signal.addEventListener('abort', () => {
     cancelAnimationFrame(frame);
     observer.disconnect();
+    for (const mesh of remoteCapsules.values()) mesh.userData.characterView?.remove();
+    range.geometry.dispose();
+    range.material.dispose();
     floor.geometry.dispose();
     floor.material.dispose();
     grid.geometry.dispose();

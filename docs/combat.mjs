@@ -30,31 +30,44 @@ export function combatSettings(raw) {
   return result;
 }
 
+const bodyRadius = .36;
+const strikeRadius = .46;
+const strikeOffset = .66;
+const warpGap = .89;
+const maxWarpHeight = .65;
+const originOf = actor => ({ x: actor.x, y: actor.y, z: actor.z });
+
 export function touchesAttack(origin, target, attack) {
-  const dx = target.x - origin.x, dz = target.z - origin.z;
-  const forward = dx * Math.sin(attack.yaw) + dz * Math.cos(attack.yaw);
-  const lateral = dx * Math.cos(attack.yaw) - dz * Math.sin(attack.yaw);
-  return Math.abs(target.y - origin.y) <= 1.25 && forward >= -.38 &&
-    forward <= attack.reach + .36 && Math.abs(lateral) <= .88;
+  const x = origin.x + Math.sin(attack.yaw) * strikeOffset;
+  const z = origin.z + Math.cos(attack.yaw) * strikeOffset;
+  const y = origin.y + (origin.stance === 'crouch' || origin.crouch ? .62 : .92);
+  const height = target.stance === 'crouch' || target.crouch ? 1.12 : 1.8;
+  const capsuleY = Math.max(target.y + bodyRadius, Math.min(target.y + height - bodyRadius, y));
+  return Math.hypot(target.x - x, target.z - z, capsuleY - y) <= bodyRadius + strikeRadius;
 }
 
-export function createCombat(actor, settings, fallbackSpawn, animationDuration, onShake, onControlReset) {
+export function createCombat(actor, settings, fallbackSpawn, animationDuration, onShake, onControlReset, identity = 'local', shakeEnabled) {
   let clock = 0, serial = 0, swing, queued = false, respawnAt = 0;
-  let stunUntil = 0, slowUntil = 0, graceUntil = 0;
+  let stunUntil = 0, slowUntil = 0, graceUntil = 0, impactUntil = 0;
   const connections = new Map();
+  const swings = new Map();
   actor.hp = maxHealth;
   actor.life = 0;
 
   function start(id, stage) {
     const slot = attackSlot(id, stage);
-    const seconds = bound(animationDuration(slot), .38, 8, .48 + (id === 'ultimate' ? .22 : 0));
+    const seconds = bound(animationDuration(slot), .38, 8, .52 + (id === 'ultimate' ? .22 : 0));
+    const origin = originOf(actor);
     swing = {
-      id, stage, elapsed: 0, seconds,
+      id, stage, elapsed: 0, seconds, origin, reach: settings.actions[id].reach,
       packet: { kind: id, id: ++serial, yaw: Math.atan2(actor.facingX, actor.facingZ) },
     };
+    actor.range = { ...origin, radius: swing.reach };
     actor.action = slot;
     actor.actionSerial = serial;
+    actor.dashLeft = 0;
     queued = false;
+    swings.set(serial, { kind: id, expires: clock + seconds / .45 + 1 });
   }
 
   function press(id) {
@@ -71,20 +84,29 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
     return true;
   }
 
+  function shake(kind, fallback) {
+    if (shakeEnabled?.(kind) ?? fallback) onShake();
+  }
+
+  function stopSwing() {
+    swing = actor.attack = actor.range = null;
+    actor.warping = false;
+  }
+
   function receive(origin, attack) {
     if (!actor.hp || clock < graceUntil || !touchesAttack(origin, actor, attack)) return false;
     actor.hp = Math.max(0, actor.hp - attack.damage);
-    if (attack.shake) onShake();
+    shake(attack.kind, attack.shake);
     if (actor.hp === 0) {
       actor.action = 'death';
       actor.actionSerial = ++serial;
       respawnAt = clock + settings.respawn;
-      swing = actor.attack = null;
+      stopSwing();
       actor.dashLeft = 0;
       onControlReset();
     } else if (attack.effect === 'stun') {
       stunUntil = Math.max(stunUntil, clock + attack.seconds);
-      swing = actor.attack = null;
+      stopSwing();
       actor.action = '';
       actor.dashLeft = 0;
       onControlReset();
@@ -93,13 +115,47 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
       actor.dashLeft = 0;
       actor.verticalSpeed = Math.min(6, 2.8 + attack.seconds);
       actor.state = 'in air';
+      stopSwing();
+      if (actor.action?.includes('Combo')) actor.action = '';
     }
     return true;
   }
 
+  function acquireTarget(players) {
+    let distance = swing.reach;
+    let target;
+    for (const pose of players.values()) {
+      if (pose.hp === 0 || Math.abs(pose.y - swing.origin.y) > maxWarpHeight) continue;
+      const gap = Math.hypot(pose.x - swing.origin.x, pose.z - swing.origin.z);
+      if (gap > distance) continue;
+      distance = gap;
+      target = pose;
+    }
+    swing.warp = null;
+    if (!target || distance < .02) return;
+    const dx = target.x - swing.origin.x;
+    const dz = target.z - swing.origin.z;
+    const fraction = Math.max(0, distance - warpGap) / distance;
+    const fromYaw = swing.packet.yaw;
+    const difference = Math.atan2(dx, dz) - fromYaw;
+    swing.warp = {
+      x: swing.origin.x + dx * fraction, z: swing.origin.z + dz * fraction,
+      fromYaw, turn: Math.atan2(Math.sin(difference), Math.cos(difference)),
+      duration: Math.min(.24, swing.seconds * .45),
+    };
+  }
+
   function tick(dt, now, players) {
     clock += dt;
+    if (clock >= impactUntil) actor.impacts = null;
+    for (const [id, entry] of swings) if (clock > entry.expires) swings.delete(id);
     for (const id of connections.keys()) if (!players.has(id)) connections.delete(id);
+    for (const pose of players.values()) {
+      const outgoing = swings.get(pose.impacts?.[identity]);
+      if (!outgoing || outgoing.acknowledged) continue;
+      outgoing.acknowledged = true;
+      shake(outgoing.kind, settings.actions[outgoing.kind]?.shake);
+    }
     if (!actor.hp) {
       if (clock < respawnAt) return;
       const { x, z } = settings.spawn ?? fallbackSpawn;
@@ -115,24 +171,48 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
       const last = connections.get(uid);
       if (last?.connection === pose.connection && last.id >= attack.id) continue;
       if (!Object.hasOwn(settings.actions, attack.kind)) continue;
-      if (receive(pose, { ...settings.actions[attack.kind], yaw: attack.yaw })) connections.set(uid, { connection: pose.connection, id: attack.id });
+      if (receive(pose, { ...settings.actions[attack.kind], kind: attack.kind, yaw: attack.yaw })) {
+        connections.set(uid, { connection: pose.connection, id: attack.id });
+        const impacts = { ...actor.impacts, [uid]: attack.id };
+        actor.impacts = Object.fromEntries(Object.entries(impacts).slice(-8));
+        impactUntil = clock + .65;
+      }
       if (!actor.hp) return;
     }
     if (swing) swing.elapsed += dt * (clock < slowUntil ? .45 : 1);
     if (swing && swing.elapsed >= swing.seconds) {
       if (queued && swing.stage < settings.actions[swing.id].count) start(swing.id, swing.stage + 1);
-      else { swing = null; actor.action = ''; }
+      else { stopSwing(); actor.action = ''; }
     }
     if (actor.action === 'interact' && clock >= actor.interactionUntil) actor.action = '';
-    // Contact starts after windup and ends before the recovery frames.
-    actor.attack = swing && swing.elapsed >= swing.seconds * .25 && swing.elapsed <= swing.seconds * .7 ? swing.packet : null;
+    if (!swing) return;
+
+    if (swing.warp === undefined) acquireTarget(players);
+    const warp = swing.warp;
+    actor.warping = Boolean(warp && swing.elapsed < warp.duration);
+    if (warp && !swing.warpFinished) {
+      const t = Math.min(1, swing.elapsed / warp.duration);
+      const eased = t * t * (3 - 2 * t);
+      actor.x = swing.origin.x + (warp.x - swing.origin.x) * eased;
+      actor.z = swing.origin.z + (warp.z - swing.origin.z) * eased;
+      const yaw = warp.fromYaw + warp.turn * eased;
+      actor.facingX = Math.sin(yaw);
+      actor.facingZ = Math.cos(yaw);
+      swing.packet = { ...swing.packet, yaw: Math.atan2(actor.facingX, actor.facingZ) };
+      swing.warpFinished = t === 1;
+    }
+    const contactStart = Math.max(swing.seconds * .34, warp?.duration ?? 0);
+    actor.range = swing.elapsed < contactStart + .15 ? actor.range : null;
+    // Range selects a target. Only the strike collider during the contact window deals damage.
+    actor.attack = swing.elapsed >= contactStart && swing.elapsed <= Math.max(contactStart + .16, swing.seconds * .8) ?
+      swing.packet : null;
   }
 
   return {
     press, interact, tick, receive,
     blocked: () => !actor.hp || clock < stunUntil,
     timeScale: () => clock < slowUntil ? .45 : 1,
-    movement: input => clock < stunUntil ? idleInputs : input,
+    movement: input => clock < stunUntil || swing ? idleInputs : input,
     respawnLeft: () => actor.hp ? 0 : Math.max(0, respawnAt - clock),
   };
 }
@@ -220,7 +300,7 @@ export function mountCombatPanel(world, signal, uid, shared) {
     number('Jangkauan (meter)', 'reach', .6, 5, 'any');
     field(group, 'Efek hit', 'select', () => rule().effect, value => rule().effect = value);
     number('Durasi efek (detik)', 'seconds', .1, 4, 'any');
-    field(group, 'Camera shake saat terkena', 'checkbox', () => rule().shake, value => rule().shake = value);
+    field(group, 'Camera shake saat hit', 'checkbox', () => rule().shake, value => rule().shake = value);
     section.append(group);
   }
   const save = button(section, local && shared ? 'Simpan Combat Solo' : 'Simpan Combat', async () => {

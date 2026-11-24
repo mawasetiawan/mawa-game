@@ -16,16 +16,14 @@ export function connectMapReplication(data, db, party, uid, signal) {
       player.forEach(connection => { latest = { ...connection.val(), connection: connection.key }; });
       if (latest) {
         const previous = players.get(player.key);
-        if (!previous || previous.x !== latest.x || previous.y !== latest.y ||
-            previous.z !== latest.z || previous.crouch !== latest.crouch ||
-            previous.hp !== latest.hp || previous.life !== latest.life ||
-            previous.attack?.id !== latest.attack?.id || previous.pulse !== latest.pulse ||
-            previous.connection !== latest.connection) {
+        const signature = JSON.stringify(latest);
+        if (previous?.signature !== signature) {
           const now = performance.now();
           const elapsed = previous ? now - previous.receivedAt : Infinity;
-          const velocity = axis => latest.life === previous?.life && elapsed >= 40 && elapsed <= 200 ?
+          const velocity = axis => latest.life === previous?.life && !latest.warp && !previous?.warp &&
+            elapsed >= 40 && elapsed <= 200 ?
             Math.max(-36, Math.min(36, (latest[axis] - previous[axis]) / (elapsed / 1000))) : 0;
-          players.set(player.key, { ...latest, receivedAt: now, vx: velocity('x'), vz: velocity('z') });
+          players.set(player.key, { ...latest, signature, receivedAt: now, vx: velocity('x'), vz: velocity('z') });
         }
         next.add(player.key);
       }
@@ -62,12 +60,21 @@ export function connectMapReplication(data, db, party, uid, signal) {
 
   return {
     players,
+    uid,
     spawnAngle: [...uid].reduce((hash, letter) => Math.imul(hash ^ letter.charCodeAt(0), 16777619), 2166136261) >>> 0,
-    publish(actor, now) {
+    publish(actor, now, character) {
       if (!connectedRef || now < nextUpdate) return;
       const round = value => Math.round(value * 100) / 100;
       const pose = { x: round(actor.x), y: round(actor.y), z: round(actor.z), crouch: actor.stance === 'crouch',
-        hp: actor.hp, life: actor.life };
+        hp: actor.hp, life: actor.life, yaw: Math.atan2(actor.facingX, actor.facingZ),
+        gait: actor.gait, state: actor.state };
+      if (character?.id) pose.character = character.id;
+      if (actor.action) {
+        pose.action = actor.action;
+        pose.anim = actor.actionSerial;
+      }
+      if (actor.warping) pose.warp = true;
+      if (actor.impacts) pose.impacts = actor.impacts;
       if (actor.attack) {
         pose.attack = actor.attack;
         pose.pulse = Math.floor(now / 120) % 1000000000;

@@ -52,6 +52,80 @@ function disposeModel(scene, closedImages = new Set()) {
   }
 }
 
+function createCharacterView(THREE, scene) {
+  const root = new THREE.Group();
+  scene.add(root);
+  let active, action, mixer, crouching, airborne, transition, playback, remaining = 0;
+
+  function clear() {
+    mixer?.stopAllAction();
+    if (mixer) mixer.uncacheRoot(active.scene);
+    root.clear();
+    mixer = active = undefined;
+  }
+
+  return {
+    remove() { clear(); root.removeFromParent(); },
+    update(asset, actor, dt, capsule, timeScale = 1, preview = '') {
+      if (asset !== active) {
+        clear();
+        active = asset;
+        crouching = airborne = transition = undefined;
+        remaining = 0;
+        action = playback = undefined;
+        mixer = asset?.scene ? new THREE.AnimationMixer(asset.scene) : undefined;
+        if (asset?.fit) root.add(asset.fit);
+      }
+      root.visible = Boolean(asset?.scene) && capsule.visible;
+      if (!asset?.scene) return;
+      capsule.visible = false;
+      const { options, clips } = asset;
+      const mapping = resolveMapping(asset);
+      root.position.set(actor.x,actor.y + options.height,actor.z);
+      root.rotation.y = Math.atan2(actor.facingX,actor.facingZ) + options.yaw * Math.PI / 180;
+      root.scale.setScalar(options.scale);
+      const state = characterAnimationState(actor);
+      const nextCrouch = actor.stance === 'crouch';
+      const nextAir = state === 'jump' || state === 'fall';
+      const edge = nextAir ? undefined : airborne ? 'land' :
+        crouching !== undefined && crouching !== nextCrouch ? (nextCrouch ? 'crouchEnter' : 'crouchExit') : undefined;
+      crouching = nextCrouch;
+      airborne = nextAir;
+      if (nextAir || preview || actor.action) remaining = 0;
+      if (edge && !preview && !actor.action && clips[Number(mapping[edge])]) {
+        transition = edge;
+        remaining = clips[Number(mapping[edge])].duration;
+      }
+      const clipFor = key => key ? clips[Number(key)] : undefined;
+      const slot = actor.action === 'death' || clipKey(mapping, actor.action) ? actor.action : remaining > 0 ? transition : state;
+      const selectedPreview = slot === 'death' ? '' : preview;
+      const key = selectedPreview || clipKey(mapping, slot) || (slot === 'death' ? undefined : clipKey(mapping, 'idle'));
+      const clip = clipFor(key);
+      const once = !selectedPreview && (slot === 'death' || (slot !== 'fall' &&
+        !(asset.loops[slot] ?? loopsByDefault(slot))));
+      const playbackKey = [selectedPreview, slot, key, once, slot === actor.action ? actor.actionSerial : ''].join('/');
+      if (playback !== playbackKey) {
+        const previous = action;
+        action = clip ? mixer.clipAction(clip).reset() : undefined;
+        playback = playbackKey;
+        if (action) {
+          action.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity);
+          action.clampWhenFinished = once;
+          action.play();
+        }
+        if (previous && previous !== action) {
+          if (options.blend <= 0) previous.stop();
+          else if (action) action.crossFadeFrom(previous, options.blend, false);
+          else previous.fadeOut(options.blend);
+        }
+      }
+      remaining -= dt * options.speed * timeScale;
+      mixer.timeScale = options.speed * timeScale;
+      mixer.update(dt);
+    },
+  };
+}
+
 export function mountCharacterPanel(world, signal, preset) {
   const section = document.createElement('details');
   const title = document.createElement('summary');
@@ -181,6 +255,7 @@ export function mountCharacterPanel(world, signal, preset) {
       const link = Object.assign(document.createElement('a'), { href: url, download: id });
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+      // A locally exported package becomes shareable once it is available in the repository.
       asset.packageId = id;
       listCharacter(id, name, payload);
       savedList.value = id;
@@ -204,23 +279,28 @@ export function mountCharacterPanel(world, signal, preset) {
   controls.append(nameField);
 
   use.addEventListener('click', () => void loadSaved(savedList.value), { signal });
-  async function loadSaved(id, overrides) {
-    if (!runtime || pending || library.size >= 6 || !id) return;
-    pending = true;
-    render();
-    let payload;
-    try {
-      let data = saved.get(id);
-      if (!data) {
-        const response = await fetch('https://raw.githubusercontent.com/' + owner + '/main/docs/characters/' + encodeURIComponent(id), { signal });
+  const remotePackages = new Map();
+  function fetchPackage(id) {
+    if (!remotePackages.has(id)) {
+      if (remotePackages.size >= 12) remotePackages.delete(remotePackages.keys().next().value);
+      const promise = (async () => {
+        const url = 'https://raw.githubusercontent.com/' + owner + '/main/docs/characters/' + encodeURIComponent(id);
+        const response = await fetch(url, { signal });
         if (!response.ok) throw Error('Karakter belum bisa dimuat dari GitHub.');
-        const blob = await response.blob();
-        data = await unpackCharacter(blob);
-      }
-      if (data.version !== 1 || typeof data.source !== 'string' || data.source.length > Math.ceil(maxBytes / 3) * 4) throw Error('Paket karakter tidak valid.');
-      const buffer = Uint8Array.from(atob(data.source), character => character.charCodeAt(0)).buffer;
-      payload = await runtime.read(buffer);
-      if (signal.aborted) return;
+        return unpackCharacter(await response.blob());
+      })();
+      remotePackages.set(id, promise);
+      void promise.catch(() => { if (remotePackages.get(id) === promise) remotePackages.delete(id); });
+    }
+    return remotePackages.get(id);
+  }
+
+  async function buildAsset(id, data, overrides) {
+    if (data.version !== 1 || typeof data.source !== 'string' || data.source.length > Math.ceil(maxBytes / 3) * 4) throw Error('Paket karakter tidak valid.');
+    const buffer = Uint8Array.from(atob(data.source), character => character.charCodeAt(0)).buffer;
+    const payload = await runtime.read(buffer);
+    if (signal.aborted) { disposeModel(payload.scene); return null; }
+    try {
       const next = runtime.prepare(payload);
       next.source = buffer;
       next.packageId = id;
@@ -240,14 +320,28 @@ export function mountCharacterPanel(world, signal, preset) {
         if (typeof loop === 'boolean') next.loops[key] = loop;
         if (typeof value === 'string' && /^\d+$/.test(value) && next.clips[Number(value)]) next.mapping[key] = value;
       }
+      return next;
+    } catch (error) {
+      disposeModel(payload.scene);
+      throw error;
+    }
+  }
+
+  async function loadSaved(id, overrides) {
+    if (!runtime || pending || library.size >= 6 || !id) return;
+    pending = true;
+    render();
+    try {
+      const data = saved.get(id) ?? await fetchPackage(id);
+      const next = await buildAsset(id, data, overrides);
+      if (!next) return;
       current = String(++serial);
       library.set(current, next);
       model.add(new Option(next.name, current));
       model.value = current;
-      payload = null;
       status.textContent = 'Karakter dipakai.';
     } catch(error) { if (!signal.aborted) status.textContent = error.message; }
-    finally { if (payload) disposeModel(payload.scene); pending = false; if (!signal.aborted) render(); }
+    finally { pending = false; if (!signal.aborted) render(); }
   }
   const settings = Object.fromEntries([
     ['scale', 'Skala', .25, 4, .05],
@@ -395,6 +489,48 @@ export function mountCharacterPanel(world, signal, preset) {
   render();
 
   return {
+    networkState() {
+      const asset = library.get(current);
+      return asset.packageId && { id: asset.packageId };
+    },
+    createPeer(THREE, scene) {
+      const view = createCharacterView(THREE, scene);
+      let activeId, asset, epoch = 0;
+      function reset() {
+        epoch++;
+        if (asset) {
+          view.update(null, null, 0, { visible: false });
+          disposeModel(asset.scene);
+          asset = null;
+        }
+      }
+      return {
+        update(id, actor, dt, capsule) {
+          if (id !== activeId) {
+            activeId = id;
+            reset();
+            const requested = epoch;
+            if (typeof id === 'string' && id.length <= 100 && packageName.test(id)) {
+              void (async () => {
+                try {
+                  const data = await fetchPackage(id);
+                  if (requested !== epoch || signal.aborted) return;
+                  const model = await buildAsset(id, data, preset?.package === id ? preset : undefined);
+                  if (!model) return;
+                  if (requested === epoch && !signal.aborted) asset = model;
+                  else disposeModel(model.scene);
+                } catch (error) {
+                  if (requested === epoch && !signal.aborted) console.warn('Karakter pemain tidak tersedia:', id, error.message);
+                }
+              })();
+            }
+          }
+          view.update(asset, actor, dt, capsule);
+        },
+        height() { return asset ? 1.8 * asset.options.scale + asset.options.height : null; },
+        remove() { reset(); view.remove(); },
+      };
+    },
     snapshot() {
       const asset = library.get(current);
       if (!asset.scene) return null;
@@ -411,9 +547,7 @@ export function mountCharacterPanel(world, signal, preset) {
       return options ? 1.8 * options.scale + options.height : null;
     },
     attach(THREE, scene) {
-      const root = new THREE.Group();
-      scene.add(root);
-      let active, action, mixer, crouching, airborne, transition, playback, remaining = 0;
+      const view = createCharacterView(THREE, scene);
       runtime = {
         async read(buffer) {
           if (new DataView(buffer).getUint32(0,true) !== 0x46546c67) throw Error('File ini bukan GLB.');
@@ -464,71 +598,11 @@ export function mountCharacterPanel(world, signal, preset) {
         void loadSaved(preset.package, preset);
       }
       signal.addEventListener('abort', () => {
-        mixer?.stopAllAction();
-        scene.remove(root);
+        view.remove();
         const images = new Set();
         for (const asset of library.values()) disposeModel(asset.scene, images);
       }, {once:true});
-      return (actor, dt, capsule, timeScale = 1) => {
-        const asset = library.get(current);
-        if (asset !== active) {
-          mixer?.stopAllAction();
-          if (mixer) mixer.uncacheRoot(active.scene);
-          root.clear();
-          active = asset;
-          crouching = airborne = transition = undefined;
-          remaining = 0;
-          action = playback = undefined;
-          mixer = asset.scene ? new THREE.AnimationMixer(asset.scene) : undefined;
-          if (asset.fit) root.add(asset.fit);
-        }
-        root.visible = Boolean(asset.scene) && capsule.visible;
-        if (!asset.scene) return;
-        capsule.visible = false;
-        const { options, clips } = asset;
-        const mapping = resolveMapping(asset);
-        root.position.set(actor.x,actor.y + options.height,actor.z);
-        root.rotation.y = Math.atan2(actor.facingX,actor.facingZ) + options.yaw * Math.PI / 180;
-        root.scale.setScalar(options.scale);
-        const state = characterAnimationState(actor);
-        const nextCrouch = actor.stance === 'crouch';
-        const nextAir = state === 'jump' || state === 'fall';
-        const edge = nextAir ? undefined : airborne ? 'land' :
-          crouching !== undefined && crouching !== nextCrouch ? (nextCrouch ? 'crouchEnter' : 'crouchExit') : undefined;
-        crouching = nextCrouch;
-        airborne = nextAir;
-        if (nextAir || preview || actor.action) remaining = 0;
-        if (edge && !preview && !actor.action && clips[Number(mapping[edge])]) {
-          transition = edge;
-          remaining = clips[Number(mapping[edge])].duration;
-        }
-        const clipFor = key => key ? clips[Number(key)] : undefined;
-        const slot = actor.action === 'death' || clipKey(mapping, actor.action) ? actor.action : remaining > 0 ? transition : state;
-        const selectedPreview = slot === 'death' ? '' : preview;
-        const key = selectedPreview || clipKey(mapping, slot) || (slot === 'death' ? undefined : clipKey(mapping, 'idle'));
-        const clip = clipFor(key);
-        const once = !selectedPreview && (slot === 'death' || (slot !== 'fall' &&
-          !(asset.loops[slot] ?? loopsByDefault(slot))));
-        const playbackKey = [selectedPreview, slot, key, once, slot === actor.action ? actor.actionSerial : ''].join('/');
-        if (playback !== playbackKey) {
-          const previous = action;
-          action = clip ? mixer.clipAction(clip).reset() : undefined;
-          playback = playbackKey;
-          if (action) {
-            action.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity);
-            action.clampWhenFinished = once;
-            action.play();
-          }
-          if (previous && previous !== action) {
-            if (options.blend <= 0) previous.stop();
-            else if (action) action.crossFadeFrom(previous, options.blend, false);
-            else previous.fadeOut(options.blend);
-          }
-        }
-        remaining -= dt * options.speed * timeScale;
-        mixer.timeScale = options.speed * timeScale;
-        mixer.update(dt);
-      };
+      return (actor, dt, capsule, timeScale) => view.update(library.get(current), actor, dt, capsule, timeScale, preview);
     },
   };
 }

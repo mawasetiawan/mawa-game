@@ -1,13 +1,13 @@
 import { loadDeveloperConfig, mountDeveloperConfigPanel } from './developer-config.mjs';
-import { mountCombatPanel } from './combat.mjs?v=4';
-import { mountCharacterPanel } from './character-editor.mjs?v=5';
+import { mountCombatPanel } from './combat.mjs?v=5';
+import { mountCharacterPanel } from './character-editor.mjs?v=6';
 import { mountCameraCuePanel } from './camera-cues.mjs?v=2';
 import { mountHudEditor } from './hud-editor.mjs?v=3';
 import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=2';
 import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=config';
 import { createLoginHandoff } from './login-handoff.mjs';
 import { firebaseConfig } from './config.mjs';
-import { connectMapReplication } from './map-replication.mjs?v=3';
+import { connectMapReplication } from './map-replication.mjs?v=4';
 import { connectParty } from './party.mjs?v=2';
 
 const ui = Object.fromEntries([...document.querySelectorAll('[id]')].map(node => [node.id, node]));
@@ -379,7 +379,7 @@ async function start() {
       character: characterEditor.snapshot(),
     }));
     mountDeveloperTabs(ui.world, exploration.signal);
-    import('./explore.mjs?v=14').then(({ mountExploration }) => {
+    import('./explore.mjs?v=15').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
       return mountExploration(ui.world, exploration.signal, replication, settings, getCamera, characterEditor, combat);
