@@ -8,13 +8,13 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#101e26">
-<link rel="stylesheet" href="./style.css?v=chat-keys1">
+<link rel="stylesheet" href="./style.css?v=chat-layout2">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./mawa-icon-192.png">
 </head>
 <body>
 <main>
-  <header><a class="brand" href="./">MAWA GAME</a><div id="account" class="account" hidden></div><button id="logout" hidden>Keluar</button><button id="installGame" type="button" hidden>Main di Layar Utama</button><small class="game-version" aria-label="Versi game">v26.11.24-2</small></header>
+  <header><a class="brand" href="./">MAWA GAME</a><div id="account" class="account" hidden></div><button id="logout" hidden>Keluar</button><button id="installGame" type="button" hidden>Main di Layar Utama</button><small class="game-version" aria-label="Versi game">v26.11.24-3</small></header>
   <section id="gate" class="center panel">
     <h1>Masuk ke Mawa Game</h1>
     <button id="login" type="button" aria-haspopup="dialog" aria-controls="loginChoice" disabled>Masuk dengan Google</button>
@@ -63,7 +63,7 @@
     <!-- HUD icons adapted from Tabler Icons (MIT). Copyright (c) 2020 Paweł Kuna. https://github.com/tabler/tabler-icons/blob/main/LICENSE -->
     <div class="gameplay-hud">
     <div class="hud-top">
-      <div class="hud-tag"><small>EKSPLORASI · <span class="game-version" aria-label="Versi game">v26.11.24-2</span></small><h2 id="mapTitle">Map Kosong</h2></div>
+      <div class="hud-tag"><small>EKSPLORASI · <span class="game-version" aria-label="Versi game">v26.11.24-3</span></small><h2 id="mapTitle">Map Kosong</h2></div>
       <div class="hud-compass" aria-hidden="true">· &nbsp; N &nbsp; ·</div>
       <nav class="world-toolbar" aria-label="Kontrol HUD">
         <button id="back" type="button" aria-label="Keluar dari Map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg><span>Keluar dari Map</span></button>
@@ -86,20 +86,26 @@
     </section>
     <section id="chat" class="panel chat" aria-label="Chat Room">
 <ol id="messages" role="log" aria-label="Riwayat chat room" aria-relevant="additions"></ol>
-<form id="composer">
-<textarea id="message" rows="1" required maxlength="500" enterkeyhint="send" placeholder="Tulis pesan…" aria-label="Pesan"></textarea>
-<button id="send" type="submit" aria-label="Kirim" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 4 18 8-18 8 3-8-3-8zm3 8h15"/></svg></button>
-<button id="chatToggle" type="button" aria-expanded="false" aria-controls="messages message send" aria-label="Open Chat">
-<svg class="closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 9h8m-8 4h6m7-8v12a2 2 0 0 1-2 2H7l-4 3V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-<svg class="opened" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg><span>Open Chat</span>
+<button id="chatToggle" type="button" aria-expanded="false" aria-controls="composer messages" aria-label="Buka chat">
+<svg class="closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 9h8m-8 4h6m7-8v12a2 2 0 0 1-2 2H7l-4 3V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Open Chat</span>
 </button>
-</form>
+<form id="composer">
+<div class="chat-draft">
+<textarea id="message" rows="1" required maxlength="500" enterkeyhint="send" placeholder="Tulis pesan…" aria-label="Pesan"></textarea>
+<button id="chatClose" type="button" aria-label="Tutup chat">✕</button>
+</div>
 <div id="chatKeyboard" aria-label="Keyboard game" hidden></div>
+<div class="chat-key-footer">
+<button id="chatKeyMode" type="button" data-key="123">123</button>
+<button type="button" data-key="Spasi">Spasi</button>
+<button id="send" type="submit" disabled>Kirim</button>
+</div>
+</form>
 </section>
     </div>
   </section>
   <p id="status" role="status"></p>
 </main>
-<script type="module" src="./app.mjs?v=chat-keys1"></script>
+<script type="module" src="./app.mjs?v=chat-layout2"></script>
 </body>
 </html>
