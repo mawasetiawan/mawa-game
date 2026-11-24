@@ -178,7 +178,6 @@ async function start() {
   }
 
   function updateChatPreview(latest) {
-    if (touchChat) return;
     const text = latest?.textContent?.trim();
     ui.chatLatest.replaceChildren(...(latest ? [...latest.childNodes].map(node => node.cloneNode(true)) : ['Open Chat']));
     ui.chatToggle.title = text || 'Buka chat room';
@@ -266,7 +265,6 @@ async function start() {
   function setChat(open) {
     ui.chat.toggleAttribute('data-open', open);
     ui.chatToggle.setAttribute('aria-expanded', String(open));
-    if (touchChat) ui.chatToggle.setAttribute('aria-label', open ? 'Close Chat' : 'Open Chat');
     if (!open) {
       showKeyboard(false);
       return;

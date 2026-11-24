@@ -8,13 +8,13 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#101e26">
-<link rel="stylesheet" href="./style.css?v=release11">
+<link rel="stylesheet" href="./style.css?v=release12">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./mawa-icon-192.png">
 </head>
 <body>
 <main>
-  <header><a class="brand" href="./">MAWA GAME</a><div id="account" class="account" hidden></div><button id="logout" hidden>Keluar</button><button id="installGame" type="button" hidden>Main di Layar Utama</button><small class="game-version" aria-label="Versi game">v26.11.24-11</small></header>
+  <header><a class="brand" href="./">MAWA GAME</a><div id="account" class="account" hidden></div><button id="logout" hidden>Keluar</button><button id="installGame" type="button" hidden>Main di Layar Utama</button><small class="game-version" aria-label="Versi game">v26.11.24-12</small></header>
   <section id="gate" class="center panel">
     <h1>Masuk ke Mawa Game</h1>
     <button id="login" type="button" aria-haspopup="dialog" aria-controls="loginChoice" disabled>Masuk dengan Google</button>
@@ -63,7 +63,7 @@
     <!-- HUD icons adapted from Tabler Icons (MIT). Copyright (c) 2020 Paweł Kuna. https://github.com/tabler/tabler-icons/blob/main/LICENSE -->
     <div class="gameplay-hud">
     <div class="hud-top">
-      <div class="hud-tag"><small>EKSPLORASI · <span class="game-version" aria-label="Versi game">v26.11.24-11</span></small><h2 id="mapTitle">Map Kosong</h2></div>
+      <div class="hud-tag"><small>EKSPLORASI · <span class="game-version" aria-label="Versi game">v26.11.24-12</span></small><h2 id="mapTitle">Map Kosong</h2></div>
       <div class="hud-compass" aria-hidden="true">· &nbsp; N &nbsp; ·</div>
       <nav class="world-toolbar" aria-label="Kontrol HUD">
         <button id="back" type="button" aria-label="Keluar dari Map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg><span>Keluar dari Map</span></button>
@@ -87,7 +87,7 @@
     <section id="chat" class="panel chat" aria-label="Chat Room">
 <ol id="messages" role="log" aria-label="Riwayat chat room" aria-relevant="additions"></ol>
 <button id="chatToggle" type="button" aria-expanded="false" aria-controls="composer messages" aria-label="Buka chat">
-<svg class="closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 9h8m-8 4h6m7-8v12a2 2 0 0 1-2 2H7l-4 3V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span id="chatLatest">Open Chat</span>
+<span id="chatLatest">Open Chat</span>
 </button>
 <form id="composer">
 <div class="chat-draft">
@@ -106,6 +106,6 @@
   </section>
   <p id="status" role="status"></p>
 </main>
-<script type="module" src="./app.mjs?v=release11"></script>
+<script type="module" src="./app.mjs?v=release12"></script>
 </body>
 </html>
