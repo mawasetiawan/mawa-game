@@ -1,8 +1,8 @@
-import { mountCharacterPanel } from './character-editor.mjs';
+import { mountCharacterPanel } from './character-editor.mjs?v=2';
 import { mountCameraCuePanel } from './camera-cues.mjs';
 import { mountHudEditor } from './hud-editor.mjs?v=2';
 import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=2';
-import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=8';
+import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=9';
 import { createLoginHandoff } from './login-handoff.mjs';
 import { firebaseConfig } from './config.mjs';
 import { connectMapReplication } from './map-replication.mjs?v=2';

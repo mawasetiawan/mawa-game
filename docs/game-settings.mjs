@@ -197,7 +197,7 @@ export function mountDeveloperTabs(world, signal) {
     camera: ['◉', 'Kamera', ['Mode Kamera', 'Kamera']],
     effects: ['✦', 'Efek', ['Camera Shake & Fade']],
     hud: ['▦', 'HUD', ['Tata Letak HUD', 'Tampilan']],
-    character: ['◇', 'Karakter', ['Edit Karakter']],
+    character: ['◇', 'Karakter', ['Karakter']],
     movement: ['↗', 'Gerak', ['Gerakan']],
   };
   const sections = [...group.children];

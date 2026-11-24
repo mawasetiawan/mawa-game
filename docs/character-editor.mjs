@@ -1,11 +1,17 @@
-const states = { idle: 'Idle', walk: 'Jalan', run: 'Lari', sprint: 'Sprint', jump: 'Lompat', fall: 'Jatuh', crouch: 'Jongkok', dash: 'Dash' };
+const groups = {
+  'Berdiri': { idle: 'Idle', walk: 'Jalan', run: 'Lari', sprint: 'Sprint' },
+  'Jongkok': { crouchEnter: 'Enter Crouch', crouchIdle: 'Idle Crouch', crouchMove: 'Move Crouch', crouchExit: 'Exit Crouch' },
+  'Di Udara': { jump: 'Lompat', fall: 'Jatuh', land: 'Mendarat' },
+  'Aksi': { dash: 'Dash' },
+};
+const states = Object.assign({}, ...Object.values(groups));
 const maxBytes = 32 * 1024 * 1024;
 
 export function characterAnimationState(actor) {
   if (actor.state === 'falling') return 'fall';
   if (actor.state === 'in air') return 'jump';
   if (actor.gait === 'dash' || actor.dashLeft > 0) return 'dash';
-  if (actor.stance === 'crouch') return 'crouch';
+  if (actor.stance === 'crouch') return actor.gait === 'stop' ? 'crouchIdle' : 'crouchMove';
   return Object.hasOwn(states, actor.gait) ? actor.gait : 'idle';
 }
 
@@ -31,14 +37,54 @@ export function mountCharacterPanel(world, signal) {
   const section = document.createElement('details');
   const title = document.createElement('summary');
   title.textContent = 'Edit Karakter';
-  section.append(title);
+  const savedList = document.createElement('select');
+  savedList.setAttribute('aria-label', 'Karakter tersimpan');
+  const savedLabel = document.createElement('label');
+  savedLabel.append('Karakter tersimpan', savedList);
+  const savedActions = document.createElement('div');
+  savedActions.className = 'camera-buttons';
+  section.append(title, savedLabel, savedActions);
+  const saved = new Map();
+  const owner = 'mawasetiawan/mawa-game';
+  const upload = document.createElement('a');
+  upload.href = 'https://github.com/' + owner + '/upload/main/docs/characters';
+  upload.target = '_blank';
+  upload.rel = 'noopener noreferrer';
+  upload.textContent = 'Upload ke GitHub';
+  savedActions.append(upload);
+  const use = document.createElement('button');
+  use.type = 'button';
+  use.textContent = 'Use Character';
+  use.disabled = true;
+  savedActions.prepend(use);
+  savedList.add(new Option('Pilih karakter tersimpan', ''));
+  savedList.addEventListener('change', () => { use.disabled = !savedList.value || pending || !runtime; }, { signal });
+  function listCharacter(id, name, payload) {
+    if (!saved.has(id)) savedList.add(new Option(name, id));
+    saved.set(id, payload);
+  }
+  fetch('https://api.github.com/repos/' + owner + '/contents/docs/characters', { signal })
+    .then(response => response.ok ? response.json() : [])
+    .then(files => {
+      for (const file of Array.isArray(files) ? files : []) {
+        if (file.type === 'file' && /^[a-z0-9-]+\.character\.json$/.test(file.name)) {
+          listCharacter(file.name, file.name.replace('.character.json', '').replaceAll('-', ' '), null);
+        }
+      }
+    }).catch(() => {});
+  const edit = document.createElement('details');
+  const editTitle = document.createElement('summary');
+  editTitle.textContent = 'Edit Karakter';
+  edit.append(editTitle);
+  section.append(edit);
+  title.textContent = 'Karakter';
   const status = document.createElement('p');
   status.setAttribute('role', 'status');
   const model = document.createElement('select');
   model.setAttribute('aria-label', 'Pilih karakter');
   const modelLabel = document.createElement('label');
   modelLabel.append('Karakter', model);
-  section.append(modelLabel);
+  edit.append(modelLabel);
   const controls = document.createElement('div');
   const library = new Map([['capsule', { name: 'Capsule bawaan' }]]);
   let current = 'capsule', serial = 0, runtime, preview = '', pending = false;
@@ -73,7 +119,81 @@ export function mountCharacterPanel(world, signal) {
     render();
     disposeModel(asset.scene);
   });
-  section.append(collection, controls);
+  edit.append(collection, controls);
+  const save = button('Save as Character', async () => {
+    const asset = library.get(current);
+    const name = nameField.value.trim();
+    if (!asset?.source || !name) { status.textContent = 'Isi nama karakter terlebih dahulu.'; return; }
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'karakter';
+    const id = slug + '.character.json';
+    try {
+      const reader = new FileReader();
+      const source = await new Promise((resolve,reject) => {
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(new Blob([asset.source]));
+      });
+      if (signal.aborted) return;
+      const payload = { version: 1, name, source, options: { ...asset.options }, mapping: { ...asset.mapping },
+        extra: asset.clips.slice(asset.embeddedCount).map(clip => runtime.serializeClip(clip)) };
+      const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+      const link = Object.assign(document.createElement('a'), { href: url, download: id });
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      listCharacter(id, name, payload);
+      savedList.value = id;
+      use.disabled = false;
+      status.textContent = 'Paket diunduh. Pilih Upload ke GitHub untuk menyimpannya di repo.';
+    } catch { status.textContent = 'Paket karakter gagal disimpan.'; }
+  });
+  const nameField = document.createElement('input');
+  nameField.maxLength = 60;
+  nameField.placeholder = 'Nama karakter';
+  nameField.setAttribute('aria-label', 'Nama karakter');
+  controls.append(nameField);
+
+  use.addEventListener('click', async () => {
+    if (!runtime || pending || library.size >= 6 || !savedList.value) return;
+    const id = savedList.value;
+    pending = true;
+    render();
+    let payload;
+    try {
+      let data = saved.get(id);
+      if (!data) {
+        const response = await fetch('https://raw.githubusercontent.com/' + owner + '/main/docs/characters/' + encodeURIComponent(id), { signal });
+        if (!response.ok) throw Error('Karakter belum bisa dimuat dari GitHub.');
+        const blob = await response.blob();
+        if (blob.size > maxBytes * 2) throw Error('Paket karakter terlalu besar.');
+        data = JSON.parse(await blob.text());
+      }
+      if (data.version !== 1 || typeof data.source !== 'string' || data.source.length > Math.ceil(maxBytes / 3) * 4) throw Error('Paket karakter tidak valid.');
+      const buffer = Uint8Array.from(atob(data.source), character => character.charCodeAt(0)).buffer;
+      payload = await runtime.read(buffer);
+      if (signal.aborted) return;
+      const next = runtime.prepare(payload);
+      next.source = buffer;
+      next.name = String(data.name ?? id).slice(0,60);
+      for (const [key, field] of Object.entries(settings)) {
+        const value = data.options?.[key];
+        if (Number.isFinite(value) && value >= Number(field.min) && value <= Number(field.max)) next.options[key] = value;
+      }
+      for (const entry of (Array.isArray(data.extra) ? data.extra : []).slice(0, 64-next.clips.length)) {
+        next.clips.push(runtime.parseClip(entry));
+      }
+      for (const key of Object.keys(states)) {
+        const value = data.mapping?.[key];
+        if (typeof value === 'string' && /^\d+$/.test(value) && next.clips[Number(value)]) next.mapping[key] = value;
+      }
+      current = String(++serial);
+      library.set(current, next);
+      model.add(new Option(next.name, current));
+      model.value = current;
+      payload = null;
+      status.textContent = 'Karakter dipakai.';
+    } catch(error) { if (!signal.aborted) status.textContent = error.message; }
+    finally { if (payload) disposeModel(payload.scene); pending = false; if (!signal.aborted) render(); }
+  }, { signal });
   const settings = Object.fromEntries([
     ['scale', 'Skala', .25, 4, .05],
     ['height', 'Offset tinggi', -3, 3, .05],
@@ -91,14 +211,26 @@ export function mountCharacterPanel(world, signal) {
     controls.append(label);
     return [key, field];
   }));
-  for (const [key,name] of Object.entries(states)) {
+  const locomotion = document.createElement('details');
+  const locomotionTitle = document.createElement('summary');
+  locomotionTitle.textContent = 'Locomotion';
+  locomotion.append(locomotionTitle);
+  controls.append(locomotion);
+  for (const [groupName, slots] of Object.entries(groups)) {
+    const group = document.createElement('details');
+    const heading = document.createElement('summary');
+    heading.textContent = groupName;
+    group.append(heading);
+    locomotion.append(group);
+    for (const [key,name] of Object.entries(slots)) {
     const label = document.createElement('label');
     const select = document.createElement('select');
     select.setAttribute('aria-label', 'Animasi ' + name);
     select.addEventListener('change', () => { library.get(current).mapping[key] = select.value; preview = ''; }, { signal });
     label.append(name, select);
-    controls.append(label);
+    group.append(label);
     stateInputs.set(key, select);
+    }
   }
   const audition = document.createElement('select');
   audition.setAttribute('aria-label', 'Preview klip');
@@ -125,6 +257,9 @@ export function mountCharacterPanel(world, signal) {
     importClips.disabled = pending || !runtime || !asset.scene || asset.clips.length >= 64;
     remove.disabled = pending || !asset.scene;
     model.disabled = pending;
+    save.disabled = pending || !asset.scene;
+    use.disabled = pending || !runtime || !savedList.value || library.size >= 6;
+    nameField.value = asset.name ?? '';
     preview = '';
     if (!asset.scene) return;
     for (const [key,field] of Object.entries(settings)) field.value = asset.options[key];
@@ -145,7 +280,8 @@ export function mountCharacterPanel(world, signal) {
     let payload;
     try {
       if (!/\.glb$/i.test(file.name) || file.size > maxBytes || file.size < 12) throw Error('Pilih GLB valid berukuran maksimal 32 MB.');
-      payload = await runtime.read(await file.arrayBuffer());
+      const source = await file.arrayBuffer();
+      payload = await runtime.read(source);
       if (signal.aborted) return;
       if (animationsOnly) {
         const clips = payload.animations.filter(clip => runtime.compatible(clip, asset.scene));
@@ -155,6 +291,8 @@ export function mountCharacterPanel(world, signal) {
         status.textContent = count + ' klip dipasang ke daftar animasi.';
       } else {
         const next = runtime.prepare(payload);
+        next.source = source;
+        next.name = file.name.replace(/\.glb$/i, '');
         current = String(++serial);
         library.set(current,next);
         model.add(new Option(file.name, current));
@@ -178,7 +316,7 @@ export function mountCharacterPanel(world, signal) {
     attach(THREE, scene) {
       const root = new THREE.Group();
       scene.add(root);
-      let active, action, mixer;
+      let active, action, mixer, crouching, airborne, transition, remaining = 0;
       runtime = {
         async read(buffer) {
           if (new DataView(buffer).getUint32(0,true) !== 0x46546c67) throw Error('File ini bukan GLB.');
@@ -190,6 +328,8 @@ export function mountCharacterPanel(world, signal) {
           });
           return new GLTFLoader(manager).parseAsync(buffer,'');
         },
+        parseClip: THREE.AnimationClip.parse,
+        serializeClip: THREE.AnimationClip.toJSON,
         compatible(clip, mesh) {
           return clip.tracks.length > 0 && clip.tracks.every(track => {
             const binding = THREE.PropertyBinding.parseTrackName(track.name);
@@ -209,7 +349,7 @@ export function mountCharacterPanel(world, signal) {
           offset.position.set(-center.x,-bounds.min.y,-center.z);
           offset.add(payload.scene);
           fit.add(offset);
-          return { scene: payload.scene, fit, clips: payload.animations.slice(0,64), mapping: {},
+          return { scene: payload.scene, fit, clips: payload.animations.slice(0,64), mapping: {}, embeddedCount: Math.min(64,payload.animations.length),
             options: {scale:1,height:0,yaw:0,speed:1,blend:.16} };
         },
       };
@@ -227,6 +367,8 @@ export function mountCharacterPanel(world, signal) {
           if (mixer) mixer.uncacheRoot(active.scene);
           root.clear();
           active = asset;
+          crouching = airborne = transition = undefined;
+          remaining = 0;
           action = undefined;
           mixer = asset.scene ? new THREE.AnimationMixer(asset.scene) : undefined;
           if (asset.fit) root.add(asset.fit);
@@ -238,14 +380,36 @@ export function mountCharacterPanel(world, signal) {
         root.position.set(actor.x,actor.y + options.height,actor.z);
         root.rotation.y = Math.atan2(actor.facingX,actor.facingZ) + options.yaw * Math.PI / 180;
         root.scale.setScalar(options.scale);
-        const key = preview || mapping[characterAnimationState(actor)] || mapping.idle;
+        const state = characterAnimationState(actor);
+        const nextCrouch = actor.stance === 'crouch';
+        const nextAir = state === 'jump' || state === 'fall';
+        const edge = nextAir ? undefined : airborne ? 'land' :
+          crouching !== undefined && crouching !== nextCrouch ? (nextCrouch ? 'crouchEnter' : 'crouchExit') : undefined;
+        crouching = nextCrouch;
+        airborne = nextAir;
+        if (nextAir || preview) remaining = 0;
+        if (edge && !preview && mapping[edge] !== undefined && mapping[edge] !== '') {
+          transition = edge;
+          remaining = clips[Number(mapping[edge])]?.duration ?? 0;
+        }
+        const slot = remaining > 0 ? transition : state;
+        const key = preview || mapping[slot] || mapping.idle;
         const clip = key === undefined || key === '' ? undefined : clips[Number(key)];
         if (action?.getClip() !== clip) {
           const previous = action;
-          action = clip ? mixer.clipAction(clip).reset().play() : undefined;
-          if (previous && action && options.blend > 0) action.crossFadeFrom(previous, options.blend, false);
-          else previous?.stop();
+          action = clip ? mixer.clipAction(clip).reset() : undefined;
+          if (action) {
+            const once = remaining > 0 && !preview;
+            action.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity);
+            action.clampWhenFinished = once;
+            action.play();
+          }
+          if (previous && options.blend > 0) {
+            if (action) action.crossFadeFrom(previous, options.blend, false);
+            else previous.fadeOut(options.blend);
+          } else previous?.stop();
         }
+        remaining -= dt * options.speed;
         mixer.timeScale = options.speed;
         mixer.update(dt);
       };
