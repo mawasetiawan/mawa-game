@@ -60,7 +60,16 @@ export function createCameraCues(world, signal) {
   };
 }
 
-export function mountCameraCuePanel(world, signal) {
+export function mountCameraCuePanel(world, signal, preset) {
+  const initial = {};
+  for (const [kind, defaults] of Object.entries(cameraCueDefaults)) {
+    const options = preset?.[kind];
+    if (!options || typeof options !== 'object') continue;
+    initial[kind] = Object.fromEntries(Object.entries(defaults).map(([key, value]) => [
+      key, typeof options[key] === typeof value && (typeof value !== 'number' || Number.isFinite(options[key])) ? options[key] : value,
+    ]));
+  }
+  if (Object.keys(initial).length) configured.set(world, initial);
   const section = document.createElement('details');
   const summary = document.createElement('summary');
   summary.textContent = 'Camera Shake & Fade';
@@ -124,4 +133,5 @@ export function mountCameraCuePanel(world, signal) {
     if (event.key === 'Enter' && event.target.matches('input')) event.preventDefault();
   }, { signal });
   world.querySelector('.developer-fields').append(section);
+  return { snapshot: () => ({ ...configured.get(world) }) };
 }

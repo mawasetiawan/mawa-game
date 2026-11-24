@@ -8,14 +8,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#101e26">
-<link rel="stylesheet" href="./style.css?v=release20">
+<link rel="stylesheet" href="./style.css?v=release23">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./mawa-icon-192.png">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}</script>
 </head>
 <body>
 <main>
-  <header><a class="brand" href="./">MAWA GAME</a><div id="account" class="account" hidden></div><button id="logout" hidden>Keluar</button><button id="installGame" type="button" hidden>Main di Layar Utama</button><small class="game-version" aria-label="Versi game">v26.11.24-21</small></header>
+  <header><a class="brand" href="./">MAWA GAME</a><div id="account" class="account" hidden></div><button id="logout" hidden>Keluar</button><button id="installGame" type="button" hidden>Main di Layar Utama</button><small class="game-version" aria-label="Versi game">v26.11.24-23</small></header>
   <section id="gate" class="center panel">
     <h1>Masuk ke Mawa Game</h1>
     <button id="login" type="button" aria-haspopup="dialog" aria-controls="loginChoice" disabled>Masuk dengan Google</button>
@@ -54,17 +54,22 @@
     <aside class="panel dock" aria-label="Pemain online">
       <h2>Pemain online <span id="count"></span></h2>
       <ul id="players"></ul>
+      <div id="joinPending" hidden><button id="cancelJoin" type="button">Batalkan permintaan masuk</button></div>
       <div id="invitations" hidden><h2>Undangan party</h2><ul id="invites"></ul></div>
     </aside>
   </section>
   <section id="world" class="world" hidden>
     <canvas class="map" aria-label="Map eksplorasi 3D"></canvas>
     <p id="mapNotice" class="map-notice" role="status"></p>
+    <section id="mapJoinPanel" class="map-join-panel panel" hidden aria-label="Permintaan masuk map">
+      <h2>Permintaan masuk</h2>
+      <ul id="mapJoinRequests" aria-live="polite"></ul>
+    </section>
     <p id="mapError" class="map-error" role="status" hidden></p>
     <!-- HUD icons adapted from Tabler Icons (MIT). Copyright (c) 2020 Paweł Kuna. https://github.com/tabler/tabler-icons/blob/main/LICENSE -->
     <div class="gameplay-hud">
     <div class="hud-top">
-      <div class="hud-tag"><small>EKSPLORASI · <span class="game-version" aria-label="Versi game">v26.11.24-21</span></small><h2 id="mapTitle">Map Kosong</h2></div>
+      <div class="hud-tag"><small>EKSPLORASI · <span class="game-version" aria-label="Versi game">v26.11.24-23</span></small><h2 id="mapTitle">Map Kosong</h2></div>
       <div class="hud-compass" aria-hidden="true">· &nbsp; N &nbsp; ·</div>
       <nav class="world-toolbar" aria-label="Kontrol HUD">
         <button id="back" type="button" aria-label="Keluar dari Map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg><span>Keluar dari Map</span></button>
@@ -107,6 +112,6 @@
   </section>
   <p id="status" role="status"></p>
 </main>
-<script type="module" src="./app.mjs?v=release21"></script>
+<script type="module" src="./app.mjs?v=release23"></script>
 </body>
 </html>

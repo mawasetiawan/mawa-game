@@ -1,13 +1,14 @@
-import { mountCombatPanel } from './combat.mjs';
-import { mountCharacterPanel } from './character-editor.mjs?v=4';
-import { mountCameraCuePanel } from './camera-cues.mjs';
-import { mountHudEditor } from './hud-editor.mjs?v=2';
+import { loadDeveloperConfig, mountDeveloperConfigPanel } from './developer-config.mjs';
+import { mountCombatPanel } from './combat.mjs?v=3';
+import { mountCharacterPanel } from './character-editor.mjs?v=5';
+import { mountCameraCuePanel } from './camera-cues.mjs?v=2';
+import { mountHudEditor } from './hud-editor.mjs?v=3';
 import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=2';
-import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=combat';
+import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=config';
 import { createLoginHandoff } from './login-handoff.mjs';
 import { firebaseConfig } from './config.mjs';
 import { connectMapReplication } from './map-replication.mjs?v=3';
-import { connectParty } from './party.mjs?v=1';
+import { connectParty } from './party.mjs?v=2';
 
 const ui = Object.fromEntries([...document.querySelectorAll('[id]')].map(node => [node.id, node]));
 const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -78,10 +79,11 @@ function button(label, action, failure) {
 
 async function start() {
   const sdk = 'https://www.gstatic.com/firebasejs/12.5.0';
-  const [{ initializeApp }, authSdk, data] = await Promise.all([
+  const [{ initializeApp }, authSdk, data, published] = await Promise.all([
     import(sdk + '/firebase-app.js'),
     import(sdk + '/firebase-auth.js'),
-    import(sdk + '/firebase-database.js')
+    import(sdk + '/firebase-database.js'),
+    loadDeveloperConfig()
   ]);
   const app = initializeApp(firebaseConfig);
   const auth = authSdk.getAuth(app);
@@ -90,7 +92,7 @@ async function start() {
   let session;
   const settings = { ...defaults };
   const personalSettings = new Map();
-  let sharedSettings = { ...defaults };
+  let sharedSettings = parseSettings(published.game);
   const refreshSettings = user => {
     Object.assign(settings, parseSettings({ ...sharedSettings, ...personalSettings.get(user?.uid) }));
     ui.world.style.setProperty('--hud-scale', settings.hudScale / 100);
@@ -102,24 +104,31 @@ async function start() {
   refreshSettings(auth.currentUser);
   const settingsRef = ref(db, 'gameSettings');
   const cameraRef = ref(db, 'cameraSettings');
-  let sharedCamera = parseCamera();
+  let sharedCamera = parseCamera(published.camera);
   const personalCameras = new Map();
   const isDeveloper = user => user?.emailVerified && user.email === DEVELOPER_EMAIL;
   const getCamera = () => {
     const user = auth.currentUser;
     return personalCameras.get(user?.uid) ?? sharedCamera;
   };
-  onValue(cameraRef, snapshot => { sharedCamera = parseCamera(snapshot.val()); },
+  let firstCamera = true;
+  onValue(cameraRef, snapshot => {
+    if (!firstCamera || !published.camera) sharedCamera = parseCamera(snapshot.val());
+    firstCamera = false;
+  },
     error => console.warn('Camera settings:', error));
   fetch('./settings.json?v=hud1').then(response => {
     if (!response.ok) throw Error('Settings snapshot unavailable');
     return response.json();
   }).then(snapshot => {
-    if (!liveSettings) applySettings(snapshot);
+    if (!liveSettings && !published.game) applySettings(snapshot);
   }).catch(error => console.warn(error));
   let liveSettings = false;
   onValue(settingsRef, snapshot => {
-    if (!snapshot.exists()) return;
+    if ((!liveSettings && published.game) || !snapshot.exists()) {
+      liveSettings = true;
+      return;
+    }
     liveSettings = true;
     applySettings(snapshot.val());
   }, error => console.error('Settings read:', error));
@@ -334,13 +343,13 @@ async function start() {
     active.exploration = exploration;
     const uid = active.user.uid;
     const canShare = isDeveloper(active.user);
-    const saveSettings = canShare ? next => set(settingsRef, next) : next => {
-      personalSettings.set(uid, next);
+    const saveSettings = canShare ? next => set(settingsRef, next) : (_next, changes) => {
+      personalSettings.set(uid, { ...personalSettings.get(uid), ...changes });
       refreshSettings(active.user);
     };
     mountDeveloperPanel(ui.world, saveSettings, settings, exploration.signal, uid, canShare);
-    mountCameraCuePanel(ui.world, exploration.signal);
-    mountHudEditor(ui.world, exploration.signal, uid);
+    const effects = mountCameraCuePanel(ui.world, exploration.signal, published.effects);
+    const hud = mountHudEditor(ui.world, exploration.signal, uid, published.hud);
     mountCameraPanel(ui.world, {
       current: getCamera,
       applyLocal: next => personalCameras.set(uid, next),
@@ -350,14 +359,27 @@ async function start() {
       } : undefined,
       clearLocal: () => personalCameras.delete(uid),
     }, exploration.signal);
-    const characterEditor = mountCharacterPanel(ui.world, exploration.signal);
+    const characterEditor = mountCharacterPanel(ui.world, exploration.signal, published.character);
     const combatRef = ref(db, 'combatSettings');
+    let firstCombat = true;
     const combat = mountCombatPanel(ui.world, exploration.signal, uid, {
-      watch: update => onValue(combatRef, snapshot => update(snapshot.val()), error => console.error('Combat settings:', error)),
+      initial: published.combat,
+      watch: update => onValue(combatRef, snapshot => {
+        if (!firstCombat || !published.combat) update(snapshot.val());
+        firstCombat = false;
+      }, error => console.error('Combat settings:', error)),
       save: canShare ? next => set(combatRef, next) : undefined,
     });
+    mountDeveloperConfigPanel(ui.world, exploration.signal, () => ({
+      game: parseSettings(settings),
+      camera: parseCamera(getCamera()),
+      effects: effects.snapshot(),
+      hud: hud.snapshot(),
+      combat: combat.draft,
+      character: characterEditor.snapshot(),
+    }));
     mountDeveloperTabs(ui.world, exploration.signal);
-    import('./explore.mjs?v=10').then(({ mountExploration }) => {
+    import('./explore.mjs?v=13').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
       return mountExploration(ui.world, exploration.signal, replication, settings, getCamera, characterEditor, combat);
@@ -400,12 +422,40 @@ async function start() {
     });
   }
 
+  function syncMapPresence(active, room) {
+    if (!active.onlineRef || !active.connected || active.advertisedRoom === room) return;
+    active.advertisedRoom = room;
+    void data.update(active.onlineRef, { room }).catch(error => {
+      if (active.advertisedRoom === room) active.advertisedRoom = undefined;
+      console.error('Map presence:', error);
+    });
+  }
+
+  function renderMapJoinRequests(active, requests) {
+    const rows = Object.entries(requests).map(([uid, request]) => {
+      const row = document.createElement('li');
+      const name = document.createElement('strong');
+      name.textContent = request.name;
+      const answer = (text, accepted) => {
+        const control = button(text, () => active.party.answerRequest(uid, accepted), 'Permintaan masuk sudah tidak tersedia.');
+        control.disabled = !active.connected || active.partyState.busy;
+        return control;
+      };
+      row.append(name, answer('Terima', true), answer('Tolak', false));
+      return row;
+    });
+    ui.mapJoinRequests.replaceChildren(...rows);
+    ui.mapJoinPanel.hidden = !rows.length;
+  }
+
   function renderLobby(active) {
     const state = active.partyState;
     if (!state?.ready || !active.playersReady) return;
-    const { key, room, offers, roster, busy } = state;
+    const { key, room, offers, roster, busy, requests, requestedRoom } = state;
+    syncMapPresence(active, room?.phase === 'playing' ? key : null);
     if (room?.phase === 'playing') {
       if (active.map !== key) openMap(active, key);
+      renderMapJoinRequests(active, requests);
       return;
     }
     if (active.map) {
@@ -413,12 +463,15 @@ async function start() {
       active.map = null;
     }
     show(ui.menu);
+    ui.mapJoinPanel.hidden = true;
+    ui.joinPending.hidden = !requestedRoom;
+    ui.cancelJoin.disabled = busy || !active.connected;
     const host = room?.host === active.user.uid;
     const waiting = room?.phase === 'waiting';
-    const canInvite = !key || (host && waiting);
-    const canAccept = !key || (host && waiting && Object.keys(roster).every(id => id === active.user.uid));
+    const canInvite = !requestedRoom && (!key || (host && waiting));
+    const canAccept = !requestedRoom && (!key || (host && waiting && Object.keys(roster).every(id => id === active.user.uid)));
     ui.createParty.hidden = Boolean(key);
-    ui.createParty.disabled = busy || !active.connected;
+    ui.createParty.disabled = busy || !active.connected || Boolean(requestedRoom);
     ui.party.hidden = !key;
     ui.play.hidden = !host || !waiting;
     ui.play.disabled = busy || !active.connected;
@@ -444,7 +497,14 @@ async function start() {
       const row = document.createElement('li');
       row.className = 'player';
       identity(row, profile);
-      if (id !== active.user.uid && !roster[id] && canInvite) {
+      if (id !== active.user.uid && profile.room && !key) {
+        const join = button(requestedRoom === profile.room ? 'Menunggu host' : 'Join', async () => {
+          await active.party.requestJoin(profile.room);
+          if (active.partyState?.requestedRoom) status('Permintaan masuk dikirim ke host.');
+        }, 'Map sudah tidak tersedia atau masih ada permintaan aktif.');
+        join.disabled = busy || !active.connected || Boolean(requestedRoom);
+        row.append(join);
+      } else if (id !== active.user.uid && !profile.room && !roster[id] && canInvite) {
         const invite = button('Undang', async () => {
           await active.party.invite(id);
           status('Undangan dikirim ke ' + profile.name + '.');
@@ -565,6 +625,7 @@ async function start() {
     }
     await authSdk.signOut(auth);
   }, 'Gagal keluar. Coba lagi.');
+  bind(ui.cancelJoin, () => session?.party.cancelRequest('Permintaan masuk dibatalkan.'), 'Permintaan gagal dibatalkan.');
   bind(ui.createParty, () => session?.party.create(), 'Party gagal dibuat.');
   bind(ui.play, () => session?.party.begin(), 'Host belum bisa memulai map.');
   bind(ui.leaveParty, () => session?.party.leave(), 'Gagal keluar dari party.');
@@ -601,7 +662,8 @@ async function start() {
         active.partyState = state;
         renderLobby(active);
       },
-      error: lobbyError
+      error: lobbyError,
+      notice: message => { if (active === session) status(message); }
     });
     active.stop.push(() => active.party.dispose());
 
@@ -610,12 +672,18 @@ async function start() {
       active.connected = snapshot.val() === true;
       composer(active);
       renderLobby(active);
+      const epoch = active.presenceEpoch = (active.presenceEpoch ?? 0) + 1;
+      active.onlineRef = null;
+      active.advertisedRoom = undefined;
       if (!active.connected) return;
       const connection = push(ref(db, 'presence/' + user.uid));
-      active.onlineRef = connection;
       try {
         await onDisconnect(connection).remove();
-        if (active === session && active.onlineRef === connection && active.connected) await set(connection, profile);
+        if (active !== session || active.presenceEpoch !== epoch) return;
+        await set(connection, profile);
+        if (active !== session || active.presenceEpoch !== epoch) return;
+        active.onlineRef = connection;
+        renderLobby(active);
       } catch (error) { lobbyError(error); }
     }));
 
@@ -623,7 +691,10 @@ async function start() {
       if (active !== session) return;
       active.players = {};
       snapshot.forEach(player => {
-        player.forEach(connection => { active.players[player.key] = connection.val(); });
+        player.forEach(connection => {
+          const value = connection.val();
+          if (value.room || !active.players[player.key]?.room) active.players[player.key] = value;
+        });
       });
       active.playersReady = true;
       renderLobby(active);

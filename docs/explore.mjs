@@ -1,8 +1,8 @@
-import { createCombat, combatSettings, maxHealth } from './combat.mjs';
+import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=3';
 import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs';
-import { createCameraCues, triggerCameraCue } from './camera-cues.mjs';
+import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=2';
 import { createCameraRig } from './camera-rig.mjs';
-import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=2';
+import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=3';
 
 export async function mountExploration(world, signal, replication, settings, getCamera = () => null, characterEditor, combatPanel) {
   const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js');
@@ -40,7 +40,8 @@ export async function mountExploration(world, signal, replication, settings, get
   const spawnAngle = replication.spawnAngle / 4294967296 * Math.PI * 2;
   actor.x = Math.cos(spawnAngle) * 3;
   actor.z = Math.sin(spawnAngle) * 3;
-  const combatConfig = combatPanel?.applied ?? combatSettings();
+  const sharedCombat = combatPanel?.applied ?? combatSettings();
+  const combatConfig = { ...sharedCombat };
   const defaultSpawn = { x: actor.x, z: actor.z };
   Object.assign(actor, combatConfig.spawn ?? {});
   const tickCues = createCameraCues(world, signal);
@@ -137,6 +138,7 @@ export async function mountExploration(world, signal, replication, settings, get
     const cos = Math.cos(angle), sin = Math.sin(angle);
     const x = event.clientX - bounds.left - bounds.width / 2;
     const y = event.clientY - bounds.top - bounds.height / 2;
+    Object.assign(combatConfig, (!replication.players.size && combatPanel?.solo?.()) || sharedCombat);
     if (training) {
       trainingPlayers.set('local', { ...actor, receivedAt: now, connection: 'local' });
       const dx = actor.x - dummy.x, dz = actor.z - dummy.z;

@@ -1,5 +1,5 @@
 export function connectParty(data, db, user, profile, callbacks) {
-  const { ref, push, update, onValue } = data;
+  const { ref, push, update, onValue, serverTimestamp } = data;
   const uid = user.uid;
   const root = ref(db);
   let disposed = false;
@@ -9,12 +9,14 @@ export function connectParty(data, db, user, profile, callbacks) {
   let key = null;
   let room = null;
   let offers = {};
-  let stopState, stopMembers;
+  let stopState, stopMembers, stopRequests, stopReply, timer;
+  let hostMap, requestedRoom, acceptedRoom, requests = {};
+  const requestPath = (roomId, playerId) => 'partyJoinRequests/' + roomId + '/' + playerId;
   const roster = {};
   const offerStates = new Map();
   const publish = () => {
     if (!disposed) callbacks.change({
-      key, room, roster, ready: stateReady && invitesReady, busy,
+      key, room, roster, requests, requestedRoom, ready: stateReady && invitesReady, busy,
       offers: Object.fromEntries(Object.entries(offers).filter(([id]) => offerStates.get(id)?.waiting))
     });
   };
@@ -23,6 +25,9 @@ export function connectParty(data, db, user, profile, callbacks) {
     if (next === key && stateReady) return;
     stopState?.();
     stopMembers?.();
+    stopRequests?.();
+    hostMap = null;
+    requests = {};
     key = next;
     const subscribed = next;
     room = null;
@@ -32,6 +37,18 @@ export function connectParty(data, db, user, profile, callbacks) {
       stopState = onValue(ref(db, 'partyRooms/' + next + '/state'), snapshot => {
         if (disposed || key !== subscribed) return;
         room = snapshot.val();
+        const hosting = room?.host === uid && room.phase === 'playing' ? subscribed : null;
+        if (hosting !== hostMap) {
+          stopRequests?.();
+          requests = {};
+          hostMap = hosting;
+          if (hostMap) stopRequests = onValue(ref(db, 'partyJoinRequests/' + hostMap), list => {
+            if (disposed || hostMap !== hosting) return;
+            requests = Object.fromEntries(Object.entries(list.val() ?? {}).filter(([, request]) =>
+              request.status === 'pending' && Date.now() - request.at < 300_000));
+            publish();
+          }, callbacks.error);
+        }
         stateReady = true;
         publish();
         if (room?.phase === 'closed' && !busy) void leave(false).catch(callbacks.error);
@@ -78,11 +95,65 @@ export function connectParty(data, db, user, profile, callbacks) {
     finally {
       busy = false;
       publish();
+      if (acceptedRoom) queueMicrotask(completeJoin);
     }
   }
 
   function joinChanges(id) {
     return { ['partySeats/' + uid]: id, ['partyRooms/' + id + '/members/' + uid]: profile };
+  }
+
+  function clearRequest() {
+    stopReply?.();
+    stopReply = undefined;
+    clearTimeout(timer);
+    requestedRoom = acceptedRoom = null;
+    publish();
+  }
+
+  async function cancelRequest(message) {
+    const id = requestedRoom;
+    if (!id) return;
+    clearRequest();
+    await update(root, { [requestPath(id, uid)]: null });
+    if (!disposed) callbacks.notice(message);
+  }
+
+  async function completeJoin() {
+    const id = acceptedRoom;
+    if (!id || busy || disposed) return;
+    clearRequest();
+    try {
+      await change(() => {
+        if (key) throw Error('Keluar dari party sebelum masuk ke map lain.');
+        return { ...joinChanges(id), [requestPath(id, uid)]: null };
+      });
+      if (!disposed) callbacks.notice('');
+    } catch {
+      if (!disposed) callbacks.notice('Map sudah ditutup atau permintaan masuk kedaluwarsa.');
+    }
+  }
+
+  async function requestJoin(id) {
+    if (key || busy || requestedRoom || disposed || !id) throw Error('Permintaan masuk sedang aktif.');
+    const path = requestPath(id, uid);
+    requestedRoom = id;
+    try {
+      await change(() => ({ [path]: { name: profile.name, status: 'pending', at: serverTimestamp() } }));
+      if (disposed || requestedRoom !== id) return;
+      timer = setTimeout(() => void cancelRequest('Permintaan masuk kedaluwarsa.').catch(callbacks.error), 300_000);
+      stopReply = onValue(ref(db, path), snapshot => {
+        if (disposed || requestedRoom !== id) return;
+        const reply = snapshot.val()?.status;
+        if (reply === 'accepted') {
+          acceptedRoom = id;
+          void completeJoin();
+        } else if (reply === 'declined') void cancelRequest('Host menolak permintaan masuk.').catch(callbacks.error);
+      }, callbacks.error);
+    } catch (error) {
+      clearRequest();
+      throw error;
+    }
   }
 
   function exitChanges(closeHost) {
@@ -104,6 +175,14 @@ export function connectParty(data, db, user, profile, callbacks) {
   }
 
   return {
+    requestJoin,
+    cancelRequest,
+    answerRequest(target, accepted) {
+      return change(() => {
+        if (!hostMap || !requests[target]) throw Error('Permintaan sudah tidak tersedia.');
+        return { [requestPath(hostMap, target) + '/status']: accepted ? 'accepted' : 'declined' };
+      });
+    },
     create() {
       return change(() => {
         if (key) throw new Error('Sudah berada di party');
@@ -143,6 +222,9 @@ export function connectParty(data, db, user, profile, callbacks) {
       stopInvites();
       stopState?.();
       stopMembers?.();
+      stopRequests?.();
+      stopReply?.();
+      clearTimeout(timer);
       for (const entry of offerStates.values()) entry.stop?.();
     }
   };

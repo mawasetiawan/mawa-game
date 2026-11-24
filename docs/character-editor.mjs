@@ -21,6 +21,7 @@ function clipKey(mapping, slot) {
   return /^\d+$/.test(key ?? '') ? key : undefined;
 }
 const mib = 1024 * 1024;
+const packageName = /^[a-z0-9-]+\.character\.json(?:\.gz)?$/;
 const maxBytes = 32 * mib;
 const githubWebLimit = 25 * mib;
 const formatSize = bytes => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(bytes / mib) + ' MiB';
@@ -51,7 +52,7 @@ function disposeModel(scene, closedImages = new Set()) {
   }
 }
 
-export function mountCharacterPanel(world, signal) {
+export function mountCharacterPanel(world, signal, preset) {
   const section = document.createElement('details');
   const title = document.createElement('summary');
   title.textContent = 'Edit Karakter';
@@ -85,7 +86,8 @@ export function mountCharacterPanel(world, signal) {
     .then(response => response.ok ? response.json() : [])
     .then(files => {
       for (const file of Array.isArray(files) ? files : []) {
-        if (file.type === 'file' && /^[a-z0-9-]+\.character\.json(?:\.gz)?$/.test(file.name)) {
+        if (file.type === 'file' && packageName.test(file.name)) {
+          if (saved.has(file.name)) continue;
           listCharacter(file.name, file.name.replace(/\.character\.json(?:\.gz)?$/, '').replaceAll('-', ' '), null);
         }
       }
@@ -179,6 +181,7 @@ export function mountCharacterPanel(world, signal) {
       const link = Object.assign(document.createElement('a'), { href: url, download: id });
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+      asset.packageId = id;
       listCharacter(id, name, payload);
       savedList.value = id;
       use.disabled = false;
@@ -200,9 +203,9 @@ export function mountCharacterPanel(world, signal) {
   nameField.setAttribute('aria-label', 'Nama karakter');
   controls.append(nameField);
 
-  use.addEventListener('click', async () => {
-    if (!runtime || pending || library.size >= 6 || !savedList.value) return;
-    const id = savedList.value;
+  use.addEventListener('click', () => void loadSaved(savedList.value), { signal });
+  async function loadSaved(id, overrides) {
+    if (!runtime || pending || library.size >= 6 || !id) return;
     pending = true;
     render();
     let payload;
@@ -220,9 +223,10 @@ export function mountCharacterPanel(world, signal) {
       if (signal.aborted) return;
       const next = runtime.prepare(payload);
       next.source = buffer;
+      next.packageId = id;
       next.name = String(data.name ?? id).slice(0,60);
       for (const [key, field] of Object.entries(settings)) {
-        const value = data.options?.[key];
+        const value = overrides?.options?.[key] ?? data.options?.[key];
         if (Number.isFinite(value) && value >= Number(field.min) && value <= Number(field.max)) next.options[key] = value;
       }
       for (const entry of (Array.isArray(data.extra) ? data.extra : []).slice(0, 64-next.clips.length)) {
@@ -230,9 +234,10 @@ export function mountCharacterPanel(world, signal) {
       }
       next.detected = detectAnimations(next.clips);
       for (const key of Object.keys(states)) {
-        const value = data.mapping?.[key];
+        const value = overrides?.mapping ? overrides.mapping[key] : data.mapping?.[key];
         if (value === 'off') next.mapping[key] = value;
-        if (typeof data.loops?.[key] === 'boolean') next.loops[key] = data.loops[key];
+        const loop = overrides?.loops ? overrides.loops[key] : data.loops?.[key];
+        if (typeof loop === 'boolean') next.loops[key] = loop;
         if (typeof value === 'string' && /^\d+$/.test(value) && next.clips[Number(value)]) next.mapping[key] = value;
       }
       current = String(++serial);
@@ -243,7 +248,7 @@ export function mountCharacterPanel(world, signal) {
       status.textContent = 'Karakter dipakai.';
     } catch(error) { if (!signal.aborted) status.textContent = error.message; }
     finally { if (payload) disposeModel(payload.scene); pending = false; if (!signal.aborted) render(); }
-  }, { signal });
+  }
   const settings = Object.fromEntries([
     ['scale', 'Skala', .25, 4, .05],
     ['height', 'Offset tinggi', -3, 3, .05],
@@ -363,6 +368,7 @@ export function mountCharacterPanel(world, signal) {
         if (!clips.length) throw Error('Tidak ada klip yang cocok dengan rig dan nama tulang mesh ini.');
         const count = Math.min(64 - asset.clips.length, clips.length);
         asset.clips.push(...clips.slice(0, count));
+        asset.packageId = undefined;
         asset.detected = detectAnimations(asset.clips);
         status.textContent = count + ' klip dipasang ke daftar animasi.';
       } else {
@@ -389,6 +395,12 @@ export function mountCharacterPanel(world, signal) {
   render();
 
   return {
+    snapshot() {
+      const asset = library.get(current);
+      if (!asset.scene) return null;
+      if (!asset.packageId) throw Error('Ekspor karakter aktif lewat Save as Character dan upload paketnya sebelum menyimpan pengaturan.');
+      return { package: asset.packageId, options: asset.options, mapping: asset.mapping, loops: asset.loops };
+    },
     duration(slot) {
       const asset = library.get(current);
       const key = clipKey(resolveMapping(asset), slot);
@@ -446,6 +458,11 @@ export function mountCharacterPanel(world, signal) {
         },
       };
       render();
+      if (typeof preset?.package === 'string' && packageName.test(preset.package)) {
+        if (!saved.has(preset.package)) listCharacter(preset.package, preset.package.replace(/\.character\.json(?:\.gz)?$/, ''), null);
+        savedList.value = preset.package;
+        void loadSaved(preset.package, preset);
+      }
       signal.addEventListener('abort', () => {
         mixer?.stopAllAction();
         scene.remove(root);

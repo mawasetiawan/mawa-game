@@ -35,6 +35,9 @@
           "photo": {
             ".validate": "newData.isString() && newData.val().length <= 1024"
           },
+          "room": {
+            ".validate": "newData.isString() && newData.val().matches(/^[-0-9A-Z_a-z]{20}$/) && root.child('partySeats').child($uid).val() == newData.val() && root.child('partyRooms').child(newData.val()).child('state').child('phase').val() == 'playing'"
+          },
           "$other": {
             ".validate": false
           }
@@ -118,6 +121,28 @@
         }
       }
     },
+    "partyJoinRequests": {
+      "$party": {
+        ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && root.child('partyRooms').child($party).child('state').child('host').val() == auth.uid && root.child('partyRooms').child($party).child('state').child('phase').val() == 'playing'",
+        "$uid": {
+          ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.uid == $uid",
+          ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && ((auth.uid == $uid && (!newData.exists() || (root.child('partyRooms').child($party).child('state').child('phase').val() == 'playing' && root.child('partyRooms').child($party).child('state').child('host').val() != $uid && !root.child('partySeats').child($uid).exists() && (!data.exists() || !(data.child('at').val() >= now - 300000)) && newData.child('status').val() == 'pending' && newData.child('name').val() == (auth.token.name == null ? 'Pemain' : auth.token.name) && newData.child('at').val() == now))) || (root.child('partyRooms').child($party).child('state').child('host').val() == auth.uid && root.child('partyRooms').child($party).child('state').child('phase').val() == 'playing' && data.exists() && newData.exists() && data.child('at').val() >= now - 300000 && !root.child('partySeats').child($uid).exists() && data.child('status').val() == 'pending' && (newData.child('status').val() == 'accepted' || newData.child('status').val() == 'declined') && newData.child('name').val() == data.child('name').val() && newData.child('at').val() == data.child('at').val()))",
+          ".validate": "newData.hasChildren(['name', 'status', 'at'])",
+          "name": {
+            ".validate": "newData.isString() && newData.val().length <= 256"
+          },
+          "status": {
+            ".validate": "newData.val() == 'pending' || newData.val() == 'accepted' || newData.val() == 'declined'"
+          },
+          "at": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
     "partyRooms": {
       "$party": {
         "state": {
@@ -140,7 +165,7 @@
         "members": {
           ".read": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && root.child('partySeats').child(auth.uid).val() == $party",
           "$uid": {
-            ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.uid == $uid && ((newData.exists() && !data.exists() && newData.parent().parent().parent().parent().child('partySeats').child(auth.uid).val() == $party && newData.parent().parent().parent().parent().child('partyRooms').child($party).child('state').child('phase').val() == 'waiting' && (newData.parent().parent().parent().parent().child('partyRooms').child($party).child('state').child('host').val() == auth.uid || (root.child('partyInvites').child(auth.uid).child($party).exists() && root.child('partyRooms').child($party).child('state').child('phase').val() == 'waiting'))) || (!newData.exists() && newData.parent().parent().parent().parent().child('partySeats').child(auth.uid).val() != $party))",
+            ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.uid == $uid && ((newData.exists() && !data.exists() && newData.parent().parent().parent().parent().child('partySeats').child(auth.uid).val() == $party && newData.parent().parent().parent().parent().child('partyRooms').child($party).child('state').child('phase').val() == 'waiting' && (newData.parent().parent().parent().parent().child('partyRooms').child($party).child('state').child('host').val() == auth.uid || (root.child('partyInvites').child(auth.uid).child($party).exists() && root.child('partyRooms').child($party).child('state').child('phase').val() == 'waiting'))) || (!newData.exists() && newData.parent().parent().parent().parent().child('partySeats').child(auth.uid).val() != $party) || (newData.exists() && !data.exists() && !root.child('partySeats').child($uid).exists() && newData.parent().parent().parent().parent().child('partySeats').child($uid).val() == $party && newData.parent().parent().parent().parent().child('partyRooms').child($party).child('state').child('phase').val() == 'playing' && root.child('partyRooms').child($party).child('state').child('phase').val() == 'playing' && root.child('partyJoinRequests').child($party).child($uid).child('status').val() == 'accepted' && root.child('partyJoinRequests').child($party).child($uid).child('at').val() >= now - 300000))",
             ".validate": "newData.hasChildren(['name', 'photo'])",
             "name": {
               ".validate": "newData.isString() && (auth.token.name == null ? newData.val() == 'Pemain' : newData.val() == auth.token.name)"

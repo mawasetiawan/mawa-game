@@ -18,6 +18,7 @@ import { defaults } from './game-settings.mjs?v=1';
 export function createMovement() {
   return {
     x: 0, y: 0, z: 0, facingX: 0, facingZ: -1, verticalSpeed: 0, dashLeft: 0,
+    dashX: 0, dashZ: -1,
     stance: Stance.STAND, gait: Gait.STOP, state: ActorState.GROUNDED
   };
 }
@@ -34,11 +35,17 @@ export function stepMovement(actor, input, dt, settings = defaults) {
     actor.stance = actor.stance === Stance.CROUCH ? Stance.STAND : Stance.CROUCH;
   }
   if (!actor.dashLeft && moving) {
-    actor.facingX = x;
-    actor.facingZ = z;
+    const current = Math.atan2(actor.facingX, actor.facingZ);
+    const target = Math.atan2(x, z);
+    const turn = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+    const yaw = current + turn * (1 - Math.exp(-14 * dt));
+    actor.facingX = Math.sin(yaw);
+    actor.facingZ = Math.cos(yaw);
   }
   if (grounded && input.dash && actor.stance === Stance.STAND && !actor.dashLeft) {
     actor.dashLeft = settings.dashSeconds;
+    actor.dashX = moving ? x : actor.facingX;
+    actor.dashZ = moving ? z : actor.facingZ;
   }
   if (grounded && input.jump && !actor.dashLeft) {
     actor.verticalSpeed = settings.jumpSpeed;
@@ -48,8 +55,8 @@ export function stepMovement(actor, input, dt, settings = defaults) {
   let remaining = dt;
   if (actor.dashLeft > 0) {
     const time = Math.min(dt, actor.dashLeft);
-    actor.x += actor.facingX * settings.dashSpeed * time;
-    actor.z += actor.facingZ * settings.dashSpeed * time;
+    actor.x += actor.dashX * settings.dashSpeed * time;
+    actor.z += actor.dashZ * settings.dashSpeed * time;
     actor.dashLeft = Math.max(0, actor.dashLeft - time);
     remaining -= time;
   }

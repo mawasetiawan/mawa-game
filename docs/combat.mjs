@@ -140,13 +140,15 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
 export function mountCombatPanel(world, signal, uid, shared) {
   const key = 'mawa-combat-v1:' + uid;
   let raw;
-  if (!shared) {
+  const local = !shared?.save;
+  if (local) {
     try { raw = JSON.parse(localStorage.getItem(key)); } catch {}
   }
-  const settings = combatSettings(raw);
-  const applied = shared ? combatSettings() : settings;
+  const settings = combatSettings(raw ?? shared?.initial);
+  const applied = shared ? combatSettings(shared.initial) : settings;
   const draftFields = [];
-  const canEdit = !shared || Boolean(shared.save);
+  const localPreset = raw ? combatSettings(raw) : null;
+  let solo = localPreset;
   let pending = false;
   const section = document.createElement('details');
   const heading = document.createElement('summary');
@@ -163,7 +165,6 @@ export function mountCombatPanel(world, signal, uid, shared) {
       if (type === 'checkbox') input.checked = getValue();
       else input.value = getValue();
     }
-    input.disabled = !canEdit;
     draftFields.push(refresh);
     refresh();
     input.addEventListener('change', () => {
@@ -199,11 +200,10 @@ export function mountCombatPanel(world, signal, uid, shared) {
   spawnButtons.className = 'camera-buttons';
   const place = button(spawnButtons, 'Atur titik di map', () => world.dispatchEvent(new Event('mawa:spawn-edit')));
   place.setAttribute('aria-pressed', 'false');
-  place.disabled = !canEdit;
   button(spawnButtons, 'Reset titik', () => {
     settings.spawn = null;
     world.dispatchEvent(new Event('mawa:spawn-point'));
-  }).disabled = !canEdit;
+  });
   world.addEventListener('mawa:spawn-point', refreshSpawn, { signal });
   world.addEventListener('mawa:spawn-editing', event => place.setAttribute('aria-pressed', String(event.detail)), { signal });
   spawn.append(spawnButtons, readout);
@@ -223,8 +223,8 @@ export function mountCombatPanel(world, signal, uid, shared) {
     field(group, 'Camera shake saat terkena', 'checkbox', () => rule().shake, value => rule().shake = value);
     section.append(group);
   }
-  const save = button(section, 'Simpan Combat', async () => {
-    if (!canEdit || pending) return;
+  const save = button(section, local && shared ? 'Simpan Combat Solo' : 'Simpan Combat', async () => {
+    if (pending) return;
     const invalid = [...section.querySelectorAll('input')].find(input => !input.checkValidity() ||
       (input.type === 'number' && !Number.isFinite(input.valueAsNumber)));
     if (invalid) {
@@ -234,27 +234,29 @@ export function mountCombatPanel(world, signal, uid, shared) {
     }
     pending = save.disabled = true;
     try {
-      if (shared) {
+      if (shared?.save) {
         await shared.save(combatSettings(settings));
         status.textContent = 'Pengaturan combat diterapkan untuk semua pemain.';
       } else {
         localStorage.setItem(key, JSON.stringify(settings));
-        status.textContent = 'Pengaturan tersimpan di perangkat ini.';
+        solo = combatSettings(settings);
+        status.textContent = shared ? 'Preset solo tersimpan di perangkat ini.' : 'Pengaturan tersimpan di perangkat ini.';
       }
     } catch {
-      status.textContent = shared ? 'Pengaturan bersama gagal disimpan.' : 'Penyimpanan perangkat tidak tersedia.';
+      status.textContent = shared?.save ? 'Pengaturan bersama gagal disimpan.' : 'Penyimpanan perangkat tidak tersedia.';
     } finally { pending = save.disabled = false; }
   });
-  save.hidden = !canEdit;
-  if (!canEdit) status.textContent = 'Pengaturan bersama dikelola Game Master.';
+  if (local && shared) status.textContent = 'Preset ini berlaku saat kamu sendiri di map. Game Master mengatur Combat untuk semua pemain.';
   section.append(status);
   world.querySelector('.developer-fields').append(section);
   const unwatch = shared?.watch(raw => {
     Object.assign(applied, combatSettings(raw));
-    Object.assign(settings, combatSettings(raw));
-    draftFields.forEach(refresh => refresh());
-    world.dispatchEvent(new Event('mawa:spawn-point'));
+    if (!local || !solo) {
+      Object.assign(settings, combatSettings(raw));
+      draftFields.forEach(refresh => refresh());
+      world.dispatchEvent(new Event('mawa:spawn-point'));
+    }
   });
   if (unwatch) signal.addEventListener('abort', unwatch, { once: true });
-  return { applied, draft: settings };
+  return { applied, draft: settings, solo: () => solo };
 }

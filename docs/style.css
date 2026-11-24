@@ -375,3 +375,11 @@ html.immersive-game,html.immersive-game body{background:#48677d}
 .combat-action-column{display:grid;justify-items:end}
 .gameplay-hud .combat-toggle{min-height:30px;padding:4px 10px}
 .gameplay-hud .developer-panel .character-size-warning{margin:6px 0;color:#ffd2a5;background:#61371970;border-radius:8px;padding:7px 9px}
+
+.map-join-panel{position:absolute;z-index:6;top:calc(max(12px,env(safe-area-inset-top)) + 92px);right:max(12px,env(safe-area-inset-right));width:min(320px,calc(100% - 24px));max-height:45%;overflow:auto;pointer-events:auto;padding:10px 12px;background:#192d39ed;border:1px solid #a0c2a858;border-radius:14px}
+.map-join-panel h2{font-size:14px}
+.map-join-panel ul{display:grid;gap:5px;list-style:none;margin:6px 0 0;padding:0}
+.map-join-panel li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:6px}
+.map-join-panel strong{overflow-wrap:anywhere;font-size:13px}
+.map-join-panel button{font-size:12px;padding:5px 8px;min-height:30px}
+#joinPending{margin-top:8px}

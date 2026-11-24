@@ -82,11 +82,11 @@ export function sanitizeHudLayout(value) {
   return result;
 }
 
-export function mountHudEditor(world, signal, namespace) {
+export function mountHudEditor(world, signal, namespace, preset) {
   const storageKey = 'mawa.hud-layout.v1.' + namespace;
   let saved;
   try { saved = JSON.parse(localStorage.getItem(storageKey)); } catch { /* Use defaults. */ }
-  let layouts = sanitizeHudLayout(saved);
+  let layouts = sanitizeHudLayout(preset ?? saved);
   const hud = world.querySelector('.gameplay-hud');
   const panel = world.querySelector('#developerPanel');
   const touch = matchMedia('(pointer: coarse)');
@@ -386,4 +386,5 @@ export function mountHudEditor(world, signal, namespace) {
     outline.remove();
   },{once:true});
   apply();
+  return { snapshot: () => sanitizeHudLayout(layouts) };
 }

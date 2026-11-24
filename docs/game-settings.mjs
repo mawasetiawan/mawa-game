@@ -86,9 +86,15 @@ export function mountDeveloperPanel(world, save, current, signal, developerUid, 
     return details;
   }
 
+  let movementSection;
+  const movementKeys = Object.values(categories.Gerakan).flat();
   for (const [category, sections] of Object.entries(categories)) {
-    if (category === 'Gerakan' && !canShare) continue;
-    const categoryNode = disclosure(group, category);
+    const movement = category === 'Gerakan';
+    const categoryNode = disclosure(group, movement ? 'Edit Movement' : category);
+    if (movement) {
+      movementSection = categoryNode;
+      categoryNode.dataset.editMovement = '';
+    }
     for (const [section, keys] of Object.entries(sections)) {
       const sectionNode = disclosure(categoryNode, section);
       for (const key of keys) {
@@ -153,31 +159,45 @@ export function mountDeveloperPanel(world, save, current, signal, developerUid, 
     panel.hidden = false;
     toggle.setAttribute('aria-expanded', 'true');
   }
-  form.addEventListener('submit', async event => {
-    event.preventDefault();
-    const next = Object.fromEntries([...inputs].map(([key, { input }]) => [
-      key, input.type === 'checkbox' ? input.checked : input.valueAsNumber
-    ]));
+  async function persist(keys, status, submit) {
+    const changes = Object.fromEntries(keys.map(key => {
+      const { input } = inputs.get(key);
+      return [key, input.type === 'checkbox' ? input.checked : input.valueAsNumber];
+    }));
+    const next = { ...current, ...changes };
     if (next.minFov > next.maxFov) {
-      output.textContent = 'Min FOV harus ≤ Max FOV.';
+      status.textContent = 'Min FOV harus ≤ Max FOV.';
       return;
     }
-    if (next.zoomMin > next.zoomMax || (canShare && (next.walkSpeed > next.runSpeed || next.runSpeed > next.sprintSpeed))) {
-      output.textContent = 'Zoom minimum harus ≤ maksimum. Kecepatan harus berurutan dari jalan, lari, lalu sprint.';
+    if (next.zoomMin > next.zoomMax) {
+      status.textContent = 'Zoom minimum harus ≤ maksimum.';
       return;
     }
-    const submit = form.querySelector('button[type=submit]');
+    if (next.walkSpeed > next.runSpeed || next.runSpeed > next.sprintSpeed) {
+      status.textContent = 'Kecepatan harus berurutan dari jalan, lari, lalu sprint.';
+      return;
+    }
     submit.disabled = true;
-    output.textContent = 'Menyimpan…';
+    status.textContent = 'Menyimpan…';
     try {
-      await save(next);
-      if (!signal.aborted) output.textContent = canShare ? 'Tersimpan dan berlaku untuk semua pemain.' : 'Tersimpan untuk sesi ini.';
+      await save(next, changes);
+      if (!signal.aborted) status.textContent = canShare ? 'Tersimpan dan berlaku untuk semua pemain.' : 'Tersimpan untuk sesi ini.';
     } catch (error) {
       console.error(error);
-      if (!signal.aborted) output.textContent = 'Gagal menyimpan pengaturan. Coba lagi.';
-    } finally {
-      submit.disabled = false;
-    }
+      if (!signal.aborted) status.textContent = 'Gagal menyimpan pengaturan. Coba lagi.';
+    } finally { submit.disabled = false; }
+  }
+
+  const movementStatus = Object.assign(document.createElement('p'), { role: 'status' });
+  const movementSave = Object.assign(document.createElement('button'), {
+    type: 'button', textContent: canShare ? 'Simpan Movement' : 'Simpan Movement Lokal',
+  });
+  movementSave.addEventListener('click', () => void persist(movementKeys, movementStatus, movementSave), { signal });
+  movementSection.append(movementSave, movementStatus);
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    if (saveButton.hidden || saveButton.disabled) return;
+    void persist([...inputs.keys()].filter(key => !movementKeys.includes(key)), output, saveButton);
   }, { signal });
   signal.addEventListener('abort', () => {
     close();
@@ -199,8 +219,15 @@ export function mountDeveloperTabs(world, signal) {
     hud: ['▦', 'HUD', ['Tata Letak HUD', 'Tampilan']],
     character: ['◇', 'Karakter', ['Karakter']],
     combat: ['✚', 'Combat', ['Combat']],
-    movement: ['↗', 'Gerak', ['Gerakan']],
+    config: ['↓', 'GitHub', ['Konfigurasi GitHub']],
   };
+  const movement = group.querySelector('[data-edit-movement]');
+  const character = [...group.children].find(node => node.querySelector('summary')?.textContent === 'Karakter');
+  if (movement && character) {
+    const editor = [...character.children].find(node => node.querySelector('summary')?.textContent === 'Edit Karakter');
+    if (editor) editor.after(movement);
+    else character.append(movement);
+  }
   const sections = [...group.children];
   const tabs = document.createElement('div');
   tabs.className = 'developer-tabs';
@@ -242,8 +269,8 @@ export function mountDeveloperTabs(world, signal) {
       button.tabIndex = active ? 0 : -1;
       page.hidden = !active;
     }
-    save.hidden = ['effects', 'character', 'combat'].includes(id);
-    if (output) output.hidden = ['effects', 'character', 'combat'].includes(id);
+    save.hidden = ['effects', 'character', 'combat', 'config'].includes(id);
+    if (output) output.hidden = ['effects', 'character', 'combat', 'config'].includes(id);
     group.scrollTop = 0;
     panel.dispatchEvent(new CustomEvent('mawa:developer-tab', { detail: id }));
   }
