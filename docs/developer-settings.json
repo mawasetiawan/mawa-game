@@ -1,3 +1,91 @@
 {
-  "version": 1
+  "version": 1,
+  "game": {
+    "hudScale": 75,
+    "autoFov": true,
+    "baseFov": 58,
+    "minFov": 46,
+    "maxFov": 73,
+    "zoomMin": 5,
+    "zoomMax": 14,
+    "orbitSpeed": 1,
+    "zoomSpeed": 1,
+    "walkSpeed": 4.2,
+    "runSpeed": 6.3,
+    "sprintSpeed": 8.9,
+    "dashSpeed": 15,
+    "dashSeconds": 0.2,
+    "jumpSpeed": 8,
+    "gravity": 29.6,
+    "invertPitch": false,
+    "invertYaw": false,
+    "invertZoom": false
+  },
+  "camera": {
+    "mode": "drone",
+    "fov": 58,
+    "altitude": 9,
+    "distance": 11,
+    "yaw": 25,
+    "height": 1,
+    "lead": 0.22,
+    "zoom": 1,
+    "smoothing": 0.28
+  },
+  "effects": {},
+  "hud": {
+    "desktop": {},
+    "portrait": {},
+    "landscape": {}
+  },
+  "combat": {
+    "respawn": 3,
+    "spawn": null,
+    "actions": {
+      "basic": {
+        "damage": 14,
+        "count": 2,
+        "reach": 1.9,
+        "effect": "airborne",
+        "seconds": 0.65,
+        "shake": true
+      },
+      "skill1": {
+        "damage": 23,
+        "count": 1,
+        "reach": 2.3,
+        "effect": "stun",
+        "seconds": 0.65,
+        "shake": false
+      },
+      "skill2": {
+        "damage": 26,
+        "count": 1,
+        "reach": 2.6,
+        "effect": "slow",
+        "seconds": 0.65,
+        "shake": true
+      },
+      "ultimate": {
+        "damage": 35,
+        "count": 1,
+        "reach": 3.2,
+        "effect": "airborne",
+        "seconds": 0.65,
+        "shake": true
+      }
+    }
+  },
+  "character": {
+    "package": "banjo-and-kazooie.character.json.gz",
+    "options": {
+      "scale": 1,
+      "height": 0,
+      "yaw": 0,
+      "speed": 1,
+      "blend": 0.16
+    },
+    "mapping": {},
+    "loops": {}
+  }
 }
