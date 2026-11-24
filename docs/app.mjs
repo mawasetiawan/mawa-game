@@ -1,5 +1,5 @@
 import { mountCameraCuePanel } from './camera-cues.mjs';
-import { mountHudEditor } from './hud-editor.mjs';
+import { mountHudEditor } from './hud-editor.mjs?v=2';
 import { mountCameraPanel, parseCamera } from './camera-settings.mjs';
 import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=5';
 import { createLoginHandoff } from './login-handoff.mjs';
@@ -126,6 +126,7 @@ async function start() {
     ui.world.classList.toggle('immersive-map', enabled);
     document.documentElement.classList.toggle('immersive-game', enabled);
     updateFullscreen();
+    ui.world.dispatchEvent(new Event('mawa:hud-viewport'));
   }
 
   function updateFullscreen() {

@@ -30,6 +30,44 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const normalizeAngle = value => ((value + 180) % 360 + 360) % 360 - 180;
 
 
+export function hudFrame(rect, left, top, width, height) {
+  return { left: rect.left + left, top: rect.top + top, width, height,
+    right: rect.left + left + width, bottom: rect.top + top + height };
+}
+
+export function keepHudInFrame(box, frame, gap = 8) {
+  const fit = (start, size, min, max) => {
+    const available = max - min - 2 * gap;
+    return available >= size ? clamp(start, min + gap, max - gap - size) - start :
+      (min + max - size) / 2 - start;
+  };
+  return [fit(box.left, box.width, frame.left, frame.right),
+    fit(box.top, box.height, frame.top, frame.bottom)];
+}
+
+function screenTranslation(node, dx, dy) {
+  // Independent CSS translate uses the parent's axes, before the element's own rotation.
+  let basis = new DOMMatrix();
+  let zoom = 1;
+  for (let item = node; item; item = item.parentElement) {
+    const style = getComputedStyle(item);
+    zoom *= parseFloat(style.zoom) || 1;
+    if (item === node) continue;
+    const transform = style.transform === 'none' ? new DOMMatrix() : new DOMMatrix(style.transform);
+    const angle = parseFloat(style.rotate) || 0;
+    const scales = style.scale === 'none' || !style.scale ? [1,1] : style.scale.split(' ').map(Number);
+    const matrix = new DOMMatrix().rotate(angle).scale(scales[0], scales[1] ?? scales[0]).multiply(transform);
+    matrix.e = matrix.f = 0;
+    basis = matrix.multiply(basis);
+  }
+  zoom = node.currentCSSZoom || zoom;
+  const inverse = basis.inverse();
+  const x = (inverse.a * dx + inverse.c * dy) / zoom;
+  const y = (inverse.b * dx + inverse.d * dy) / zoom;
+  return (Number.isFinite(x) ? x : 0) + 'px ' + (Number.isFinite(y) ? y : 0) + 'px';
+}
+
+
 export function sanitizeHudLayout(value) {
   const result = {};
   for (const profile of Object.keys(profiles)) {
@@ -53,7 +91,14 @@ export function mountHudEditor(world, signal, namespace) {
   const panel = world.querySelector('#developerPanel');
   const touch = matchMedia('(pointer: coarse)');
   const landscape = matchMedia('(orientation: landscape)');
-  const currentProfile = () => touch.matches ? landscape.matches ? 'landscape' : 'portrait' : 'desktop';
+  const currentProfile = () => {
+    if (!touch.matches) return 'desktop';
+    const type = window.screen?.orientation?.type;
+    const rotation = window.orientation;
+    const wide = type ? type.startsWith('landscape') : typeof rotation === 'number'
+      ? Math.abs(rotation) === 90 : landscape.matches;
+    return wide ? 'landscape' : 'portrait';
+  };
   const nodes = Object.fromEntries(Object.entries(targets).map(([key, [, selector]]) => [key, hud.querySelector(selector)]));
   const originals = new Map();
   const outline = document.createElement('div');
@@ -80,6 +125,8 @@ export function mountHudEditor(world, signal, namespace) {
   status.setAttribute('role', 'status');
   let active = false;
   let frame;
+  let viewportFrame;
+  let deviceProfile = currentProfile();
   let baseline;
   const pointers = new Map();
   const inputs = new Map();
@@ -92,17 +139,23 @@ export function mountHudEditor(world, signal, namespace) {
     originals.clear();
   }
 
+  function stageFrame() {
+    return hudFrame(world.getBoundingClientRect(), world.clientLeft, world.clientTop,
+      world.clientWidth, world.clientHeight);
+  }
+
   function apply() {
     restore();
-    const bounds = world.getBoundingClientRect();
+    const bounds = stageFrame();
     for (const [key, value] of Object.entries(layouts[active ? profile.value : currentProfile()])) {
       const node = nodes[key];
       if (!node) continue;
-      const zoom = node.currentCSSZoom || 1;
+      const dx = value.x * bounds.width / 100;
+      const dy = value.y * bounds.height / 100;
       const edited = {
         rotate: value.angle + 'deg',
         scale: value.sx / 100 + ' ' + value.sy / 100,
-        translate: (value.x * bounds.width / (100 * zoom)) + 'px ' + (value.y * bounds.height / (100 * zoom)) + 'px',
+        translate: screenTranslation(node, dx, dy),
       };
       if (value.border >= 0) {
         edited.borderWidth = value.border + 'px';
@@ -113,6 +166,10 @@ export function mountHudEditor(world, signal, namespace) {
       if (key === 'joystick' && value.radius >= 8) edited.width = value.radius * 2 + 'px';
       originals.set(node, Object.fromEntries(Object.keys(edited).map(property => [property,node.style[property]])));
       Object.assign(node.style,edited);
+      const box = node.getBoundingClientRect();
+      if (!box.width || !box.height || !bounds.width || !bounds.height) continue;
+      const [fixX, fixY] = keepHudInFrame(box, bounds);
+      if (fixX || fixY) node.style.translate = screenTranslation(node, dx + fixX, dy + fixY);
     }
   }
 
@@ -150,7 +207,7 @@ export function mountHudEditor(world, signal, namespace) {
     const bounds = node?.getBoundingClientRect();
     outline.hidden = !bounds?.width || !bounds?.height;
     if (!outline.hidden) {
-      const stage = world.getBoundingClientRect();
+      const stage = stageFrame();
       outline.style.left = bounds.left - stage.left + 'px';
       outline.style.top = bounds.top - stage.top + 'px';
       outline.style.width = bounds.width + 'px';
@@ -183,12 +240,12 @@ export function mountHudEditor(world, signal, namespace) {
 
   outline.addEventListener('pointerdown', beginGesture, { signal });
   outline.addEventListener('pointermove', event => {
-    if (!pointers.has(event.pointerId)) return;
+    if (!baseline || !pointers.has(event.pointerId)) return;
     pointers.set(event.pointerId, { x:event.clientX,y:event.clientY });
     const now = measure();
     const value = selected();
     const start = baseline.value;
-    const size = world.getBoundingClientRect();
+    const size = stageFrame();
     if (baseline.tool === 'move' || pointers.size === 2) {
       value.x = clamp(start.x + 100*(now.x-baseline.x)/Math.max(1,size.width),-80,80);
       value.y = clamp(start.y + 100*(now.y-baseline.y)/Math.max(1,size.height),-80,80);
@@ -227,7 +284,7 @@ export function mountHudEditor(world, signal, namespace) {
     controls.hidden = !active;
     profile.disabled = element.disabled = !active;
     if (active) { sync(); draw(); }
-    else { pointers.clear(); baseline = undefined; cancelAnimationFrame(frame); outline.hidden = true; apply(); }
+    else { cancelGesture(); cancelAnimationFrame(frame); outline.hidden = true; apply(); }
   }
 
   function button(text, click) {
@@ -273,11 +330,43 @@ export function mountHudEditor(world, signal, namespace) {
     event.preventDefault();
     event.stopImmediatePropagation();
   }, { capture:true, signal });
-  for (const select of [profile,element]) select.addEventListener('change',sync,{signal});
-  for (const query of [touch,landscape]) query.addEventListener('change',apply,{signal});
-  window.addEventListener('resize',apply,{signal});
-  const observer = new ResizeObserver(apply);
+  function cancelGesture() {
+    for (const id of pointers.keys()) {
+      if (outline.hasPointerCapture(id)) outline.releasePointerCapture(id);
+    }
+    pointers.clear();
+    baseline = undefined;
+  }
+
+  function reflow() {
+    if (viewportFrame !== undefined) return;
+    viewportFrame = requestAnimationFrame(() => {
+      viewportFrame = undefined;
+      const next = currentProfile();
+      if (next !== deviceProfile) {
+        deviceProfile = next;
+        profile.value = next;
+      }
+      cancelGesture();
+      if (active) { sync(); placeGizmo(); }
+      else apply();
+    });
+  }
+
+  for (const select of [profile,element]) select.addEventListener('change',() => {
+    cancelGesture();
+    sync();
+  },{signal});
+  for (const query of [touch,landscape]) query.addEventListener('change',reflow,{signal});
+  for (const event of ['resize','orientationchange','pageshow']) window.addEventListener(event,reflow,{signal});
+  for (const event of ['fullscreenchange','webkitfullscreenchange']) document.addEventListener(event,reflow,{signal});
+  window.screen?.orientation?.addEventListener('change',reflow,{signal});
+  window.visualViewport?.addEventListener('resize',reflow,{signal});
+  world.addEventListener('mawa:hud-viewport',reflow,{signal});
+  const observer = new ResizeObserver(reflow);
   observer.observe(world);
+  const viewportObserver = new MutationObserver(reflow);
+  viewportObserver.observe(world,{attributes:true,attributeFilter:['class']});
   controls.hidden = profile.disabled = element.disabled = true;
   section.addEventListener('keydown',event => {
     if (event.key === 'Enter' && event.target.matches('input')) event.preventDefault();
@@ -290,6 +379,8 @@ export function mountHudEditor(world, signal, namespace) {
   signal.addEventListener('abort',() => {
     setEditing(false);
     observer.disconnect();
+    viewportObserver.disconnect();
+    cancelAnimationFrame(viewportFrame);
     panelObserver.disconnect();
     restore();
     outline.remove();
