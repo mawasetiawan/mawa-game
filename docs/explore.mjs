@@ -1,12 +1,11 @@
-import { resolveFov } from './game-settings.mjs?v=4';
-import { bindOrbit } from './orbit.mjs?v=1';
+import { createCameraCues } from './camera-cues.mjs';
+import { createCameraRig } from './camera-rig.mjs';
 import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=2';
 
-export async function mountExploration(world, signal, replication, settings) {
+export async function mountExploration(world, signal, replication, settings, getCamera = () => null) {
   const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js');
   if (signal.aborted) return;
   const canvas = world.querySelector('canvas');
-  const { orbit, clampDistance } = bindOrbit(canvas, settings, signal);
   const stick = world.querySelector('#joystick');
   const thumb = stick.firstElementChild;
   const actions = world.querySelector('#actions');
@@ -32,14 +31,13 @@ export async function mountExploration(world, signal, replication, settings) {
   const remoteCapsules = new Map();
   scene.add(capsule);
   const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 85);
-  const target = new THREE.Vector3(0, 1, 0);
-  const desiredTarget = new THREE.Vector3();
-  const cameraOffset = new THREE.Vector3();
   const actor = createMovement();
   const spawnAngle = replication.spawnAngle / 4294967296 * Math.PI * 2;
   actor.x = Math.cos(spawnAngle) * 3;
   actor.z = Math.sin(spawnAngle) * 3;
-  target.set(actor.x, 1, actor.z);
+  const tickCues = createCameraCues(world, signal);
+  const shakeOffset = new THREE.Vector3();
+  const cameraRig = createCameraRig(THREE, canvas, camera, actor, settings, getCamera, signal);
   const held = new Set();
   const handled = new Set(['KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','KeyC','Space','KeyE','KeyF']);
   const input = {x:0,z:0,walk:false,sprint:false,jump:false,crouch:false,dash:false};
@@ -81,7 +79,7 @@ export async function mountExploration(world, signal, replication, settings) {
   const requestJump = () => { jumpUntil = performance.now() + 140; };
   const hasMoveInput = () => pointer !== null || ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(key => held.has(key));
   window.addEventListener('keydown', event => {
-    if (!handled.has(event.code) || event.altKey || event.ctrlKey || event.metaKey ||
+    if (world.hasAttribute('data-edit-hud') || !handled.has(event.code) || event.altKey || event.ctrlKey || event.metaKey ||
       event.target.matches?.('input, textarea, [contenteditable]') ||
       (event.code === 'Space' && event.target.closest?.('button') && !hasMoveInput())) return;
     event.preventDefault();
@@ -101,16 +99,25 @@ export async function mountExploration(world, signal, replication, settings) {
   }, options);
   window.addEventListener('keyup', event => held.delete(event.code), options);
 
+  world.addEventListener('mawa:hud-edit', resetControls, { signal });
   function moveStick(event) {
     const bounds = stick.getBoundingClientRect();
-    const radius = bounds.width * 0.36;
+    const angle = (parseFloat(stick.style.rotate) || 0) * Math.PI / 180;
+    const [sx = 1, sy = sx] = stick.style.scale.split(' ').filter(Boolean).map(Number);
+    const visualZoom = stick.currentCSSZoom || 1;
+    const radius = stick.offsetWidth * .36;
+    const cos = Math.cos(angle), sin = Math.sin(angle);
     const x = event.clientX - bounds.left - bounds.width / 2;
     const y = event.clientY - bounds.top - bounds.height / 2;
-    const distance = Math.hypot(x, y);
-    const factor = radius / Math.max(radius, distance);
-    stickX = x * factor / radius;
-    stickZ = y * factor / radius;
-    thumb.style.transform = 'translate(' + x * factor + 'px,' + y * factor + 'px)';
+    const localX = (x * cos + y * sin) / (visualZoom * sx);
+    const localY = (-x * sin + y * cos) / (visualZoom * sy);
+    const localDistance = Math.hypot(localX, localY);
+    const factor = radius / Math.max(radius, localDistance);
+    const strength = Math.min(1, localDistance / Math.max(1, radius));
+    const distance = Math.max(1, Math.hypot(x, y));
+    stickX = x / distance * strength;
+    stickZ = y / distance * strength;
+    thumb.style.transform = 'translate(' + localX * factor + 'px,' + localY * factor + 'px)';
   }
 
   stick.addEventListener('pointerdown', event => {
@@ -179,7 +186,8 @@ export async function mountExploration(world, signal, replication, settings) {
     previous = now;
     const localX = Number(held.has('KeyD')) - Number(held.has('KeyA')) + stickX;
     const localZ = Number(held.has('KeyS')) - Number(held.has('KeyW')) + stickZ;
-    const sin = Math.sin(orbit.yaw), cos = Math.cos(orbit.yaw);
+    const yaw = cameraRig.heading();
+    const sin = Math.sin(yaw), cos = Math.cos(yaw);
     input.x = localX * cos + localZ * sin;
     input.z = localZ * cos - localX * sin;
     input.sprint = sprintPointer !== null || held.has('ShiftLeft') || held.has('ShiftRight');
@@ -219,19 +227,12 @@ export async function mountExploration(world, signal, replication, settings) {
       scene.remove(mesh);
       remoteCapsules.delete(id);
     }
-    desiredTarget.set(actor.x, actor.y + 0.95, actor.z);
-    target.lerp(desiredTarget, 1 - Math.exp(-12 * dt));
-    clampDistance();
-    const fov = resolveFov(settings, orbit.distance);
-    if (camera.fov !== fov) {
-      camera.fov = fov;
-      camera.updateProjectionMatrix();
-    }
-    const horizontal = Math.cos(orbit.pitch) * orbit.distance;
-    cameraOffset.set(sin * horizontal, Math.sin(orbit.pitch) * orbit.distance, cos * horizontal);
-    camera.position.copy(target).add(cameraOffset);
-    camera.lookAt(target);
+    cameraRig.update(dt, capsule, scale);
+    const [shakeX, shakeY, shakeZ] = tickCues(dt);
+    shakeOffset.set(shakeX, shakeY, shakeZ).applyQuaternion(camera.quaternion);
+    camera.position.add(shakeOffset);
     renderer.render(scene, camera);
+    camera.position.sub(shakeOffset);
     frame = requestAnimationFrame(animate);
   }
   frame = requestAnimationFrame(animate);

@@ -186,3 +186,120 @@ html.immersive-game,html.immersive-game body{background:#48677d}
 .chat[data-keyboard] .chat-key-footer{grid-template-columns:minmax(42px,15%) minmax(0,1.25fr) minmax(64px,1fr);justify-items:stretch}
 .gameplay-hud .chat-key-footer button{min-height:clamp(23px,6.4dvh,36px);padding:0 7px;font-size:13px;border-radius:6px}
 .gameplay-hud .chat-key-footer #send{width:auto;padding-inline:12px}
+
+.gameplay-hud .chat.panel[data-desktop]:not([data-open]){
+  width:min(356px,calc(100% - 24px));padding:0;border:0;background:none;
+  backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none
+}
+.gameplay-hud .chat[data-desktop] #chatToggle,.chat[data-desktop][data-open] #messages{
+  border:1px solid #d5ede24d;border-radius:10px;background:#15272c92;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)
+}
+.gameplay-hud .chat[data-desktop] #chatToggle{
+  width:fit-content;max-width:100%;justify-self:center;min-height:34px;padding:5px 7px;font-size:13px;font-weight:400;text-align:left
+}
+.chat[data-desktop] #chatLatest{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat[data-desktop] #chatLatest strong{margin-right:6px}
+.chat[data-desktop][data-open] #chatToggle{display:none}
+.gameplay-hud .chat[data-desktop] #chatToggle{justify-content:start}
+.chat[data-desktop] #chatToggle svg{display:none}
+.chat[data-desktop] .chat-draft{grid-template-columns:minmax(0,1fr) auto 42px;align-items:center}
+.gameplay-hud .chat[data-desktop] #send{width:auto;padding-inline:12px}
+.chat[data-desktop] .chat-key-footer{display:none}
+
+.camera-buttons{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.gameplay-hud .camera-buttons button{min-height:34px;font-size:12px}
+.gameplay-hud .developer-fields select{max-width:100%;margin-top:6px;padding:4px;font:inherit}
+.gameplay-hud .developer-fields input[type=number]{width:6rem;min-height:2rem}
+
+.camera-fade-overlay{position:absolute;inset:0;pointer-events:none;opacity:0;z-index:1}
+.camera-fade-overlay.camera-fade-hud{z-index:9}
+.hud-gizmo{position:absolute;z-index:4;outline:1.5px solid #e8faaa;box-shadow:0 0 0 1px #152a31;touch-action:none;cursor:move}
+.hud-gizmo button{position:absolute;display:grid;place-items:center;width:24px;height:24px;min-height:24px;padding:0;border-radius:50%;background:#172f35;color:#e8faaa;border:1px solid #e8faaa;font:700 14px/1 system-ui;touch-action:none}
+.hud-gizmo [data-tool=move]{top:50%;left:50%;transform:translate(-50%,-50%)}
+.hud-gizmo [data-tool=scale]{right:-10px;bottom:-10px;cursor:nwse-resize}
+.hud-gizmo [data-tool=rotate]{right:-10px;top:-12px;cursor:grab}
+.world[data-edit-hud] .gameplay-hud .developer-panel{z-index:8}
+.world[data-edit-hud] .hud-gizmo{z-index:6}
+.world[data-edit-hud] .gameplay-hud{z-index:auto}
+.world[data-edit-hud] .developer-panel{pointer-events:auto}
+.world[data-edit-hud] canvas{pointer-events:none}
+
+/* Developer overlay: charcoal glass over the game, with inset control cards. */
+.gameplay-hud .developer-panel.developer-compact{
+  --dev-text:#f4f4f8;
+  --dev-muted:#a5a7b4;
+  --dev-edge:#e6e7ff22;
+  --dev-surface:#d8dcff08;
+  --dev-accent:#64e6b0;
+  width:min(292px,calc(100% - 24px));max-height:min(55dvh,420px);
+  display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--dev-edge);
+  border-radius:18px;color:var(--dev-text);
+  background:linear-gradient(155deg,#23242c79,#0b0c13ca 65%),#11121990;
+  backdrop-filter:blur(19px) saturate(1.1);-webkit-backdrop-filter:blur(19px) saturate(1.1);
+  box-shadow:inset 0 1px #ffffff12,0 16px 32px #06071165;
+}
+.gameplay-hud .developer-compact header{
+  padding:6px 8px 6px 12px;min-height:39px;flex:none;
+  border-bottom:1px solid #e6e7ff12
+}
+.gameplay-hud .developer-compact h2{font-size:14px;font-weight:650;letter-spacing:-.018em}
+.gameplay-hud .developer-compact header p{display:none}
+.gameplay-hud .developer-compact header button{
+  width:28px;min-height:27px;padding:0;border:1px solid var(--dev-edge);
+  border-radius:8px;background:#f4f4ff09;color:var(--dev-muted)
+}
+.gameplay-hud .developer-compact header button svg{width:14px;height:14px}
+.gameplay-hud .developer-compact form{display:flex;flex-direction:column;min-height:0;padding:8px;gap:6px}
+.gameplay-hud .developer-tabs{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;flex:none;
+  padding:3px;border:1px solid #e6e7ff14;border-radius:11px;background:#07081268
+}
+.gameplay-hud .developer-tabs button{
+  font-size:11px;min-width:0;min-height:29px;padding:0 2px;gap:4px;
+  border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dev-muted)
+}
+.gameplay-hud .developer-tabs button:hover{background:#e3e6ff12;color:var(--dev-text)}
+.gameplay-hud .developer-tabs button[aria-selected=true]{
+  background:#e3e6ff1a;border-color:#e3e6ff20;color:var(--dev-text);box-shadow:inset 0 1px #ffffff0f
+}
+.gameplay-hud .developer-tabs button span{font-size:12px;color:inherit}
+.gameplay-hud .developer-tabs button[aria-selected=true] span{color:var(--dev-accent)}
+.gameplay-hud .developer-compact .developer-fields{
+  display:block;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;
+  scrollbar-color:#d4d5ed3d transparent;padding:1px
+}
+.gameplay-hud .developer-compact .developer-fields details{
+  margin:4px 0;padding:6px 8px;border:1px solid #e6e7ff18;border-radius:11px;
+  background:var(--dev-surface)
+}
+.gameplay-hud .developer-compact .developer-fields details[open]{border-color:#e6e7ff29}
+.gameplay-hud .developer-compact .developer-fields details details{background:#11121b68;border-radius:8px}
+.gameplay-hud .developer-compact summary{font-size:12px;font-weight:620;color:var(--dev-text)}
+.gameplay-hud .developer-compact summary::marker{color:var(--dev-muted)}
+.gameplay-hud .developer-compact .developer-fields label{font-size:11px;margin-top:4px;gap:6px;color:var(--dev-muted)}
+.gameplay-hud .developer-compact .developer-fields .range-field{display:grid;grid-template-columns:minmax(0,1fr) minmax(68px,40%)}
+.gameplay-hud .developer-compact .range-field span{line-height:1.2}
+.gameplay-hud .developer-compact output{color:var(--dev-text);font-variant-numeric:tabular-nums}
+.gameplay-hud .developer-compact input{accent-color:var(--dev-accent)}
+.gameplay-hud .developer-compact .range-field input{min-height:18px}
+.gameplay-hud .developer-compact .developer-fields input[type=number]{width:5rem;min-height:25px;padding:2px 5px}
+.gameplay-hud .developer-compact .developer-fields select{max-width:100%;font:inherit;font-size:11px;margin:4px 4px 2px 0;padding:3px}
+.gameplay-hud .developer-compact .developer-fields :is(select,input[type=number]){
+  border:1px solid var(--dev-edge);border-radius:6px;color:var(--dev-text);background:#11121b
+}
+.gameplay-hud .developer-compact .camera-buttons{gap:4px;margin-top:5px}
+.gameplay-hud .developer-compact .developer-fields button,.gameplay-hud .developer-compact form>.save{
+  font-size:11px;min-height:26px;padding:2px 7px;border-radius:7px;gap:4px
+}
+.gameplay-hud .developer-compact .developer-fields button{
+  background:#e6e7ff0b;border-color:var(--dev-edge);color:var(--dev-text)
+}
+.gameplay-hud .developer-compact .developer-fields button:hover{background:#e6e7ff1a}
+.gameplay-hud .developer-compact form>.save{
+  align-self:flex-end;flex:none;background:var(--dev-accent);color:#10291d;border-color:#b3f4d6a0
+}
+.gameplay-hud .developer-compact form>.save svg{width:14px;height:14px}
+.gameplay-hud .developer-compact [role=status]{font-size:10px;color:var(--dev-muted)}
+.gameplay-hud .developer-compact :focus-visible{outline:2px solid var(--dev-accent);outline-offset:1px}
+@media(max-height:480px){.gameplay-hud .developer-panel.developer-compact{max-height:51dvh}}

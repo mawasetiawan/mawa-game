@@ -19,3 +19,17 @@ Unggah isi folder ini ke repo baru. Buka **Settings → Pages → Deploy from a 
 1. Buka URL di dua profil browser dengan akun Google berbeda. Kedua akun akan melihat label Anggota dan masuk ke Ruang umum.
 2. Kirim pesan dari masing-masing akun dan pastikan keduanya melihat pesan secara langsung.
 3. Muat ulang halaman untuk memeriksa riwayat. Klik Keluar dan pastikan halaman meminta login lagi.
+
+## Camera cue architecture
+
+Use the active map element as the event target. These cues are client-side and work with every camera mode. No gameplay event is wired by default.
+
+```js
+import { triggerCameraCue } from './camera-cues.mjs';
+triggerCameraCue(world, 'shake', { amplitude: 0.16, frequency: 11, duration: 0.35, decay: 3 });
+triggerCameraCue(world, 'fade', {
+  color: '#000000', opacity: 1, fadeOut: 0.25, hold: 0.15, fadeIn: 0.35, includeHud: false
+});
+```
+
+A gameplay module can also dispatch `mawa:camera-shake` or `mawa:camera-fade` with the equivalent options in `CustomEvent.detail`. Fade times are seconds. Shake amplitude is in map units and frequency is in hertz. Multiple shakes blend; a new fade starts from the current opacity. The developer panel can preview both cues without a gameplay trigger. Its Apply Default button updates client-side defaults for the current page session; explicit event options take precedence.

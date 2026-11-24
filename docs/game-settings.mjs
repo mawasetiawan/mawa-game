@@ -176,3 +176,95 @@ export function mountDeveloperPanel(world, save, current, signal) {
     group.replaceChildren();
   }, { once: true });
 }
+
+export function mountDeveloperTabs(world, signal) {
+  const panel = world.querySelector('#developerPanel');
+  const form = panel.querySelector('form');
+  const group = form.querySelector('.developer-fields');
+  const save = form.querySelector('button[type=submit]');
+  const output = form.querySelector(':scope > [role=status]');
+  const groups = {
+    camera: ['◉', 'Kamera', ['Mode Kamera', 'Kamera']],
+    effects: ['✦', 'Efek', ['Camera Shake & Fade']],
+    hud: ['▦', 'HUD', ['Tata Letak HUD', 'Tampilan']],
+    movement: ['↗', 'Gerak', ['Gerakan']],
+  };
+  const sections = [...group.children];
+  const tabs = document.createElement('div');
+  tabs.className = 'developer-tabs';
+  tabs.setAttribute('role', 'tablist');
+  tabs.setAttribute('aria-label', 'Kategori Developer');
+  const pages = new Map();
+
+  for (const [id, [symbol, name, headings]] of Object.entries(groups)) {
+    const matches = sections.filter(node => headings.includes(node.querySelector('summary')?.textContent));
+    if (!matches.length) continue;
+    const page = document.createElement('div');
+    page.className = 'developer-tab-page';
+    page.id = 'developer-page-' + id;
+    page.setAttribute('role', 'tabpanel');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = 'developer-tab-' + id;
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-controls', page.id);
+    page.setAttribute('aria-labelledby', button.id);
+    const icon = document.createElement('span');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = symbol;
+    button.append(icon, name);
+    page.append(...matches);
+    pages.set(id, { button, page });
+    tabs.append(button);
+    group.append(page);
+    button.addEventListener('click', () => select(id), { signal });
+  }
+  const order = [...pages.keys()];
+  if (!order.length) return;
+
+  function select(id) {
+    for (const [key, { button, page }] of pages) {
+      const active = key === id;
+      button.setAttribute('aria-selected', String(active));
+      button.tabIndex = active ? 0 : -1;
+      page.hidden = !active;
+    }
+    save.hidden = id === 'effects';
+    if (output) output.hidden = id === 'effects';
+    group.scrollTop = 0;
+    panel.dispatchEvent(new CustomEvent('mawa:developer-tab', { detail: id }));
+  }
+
+  tabs.addEventListener('keydown', event => {
+    const index = order.findIndex(key => pages.get(key).button === event.target);
+    if (index < 0) return;
+    const offsets = { ArrowLeft: order.length - 1, ArrowRight: 1 };
+    let next = offsets[event.key] !== undefined ? (index + offsets[event.key]) % order.length : -1;
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = order.length - 1;
+    if (next < 0) return;
+    event.preventDefault();
+    select(order[next]);
+    pages.get(order[next]).button.focus();
+  }, { signal });
+
+  group.addEventListener('toggle', event => {
+    const detail = event.target;
+    if (!(detail instanceof HTMLDetailsElement) || !detail.open) return;
+    for (const sibling of detail.parentElement.children) {
+      if (sibling !== detail && sibling instanceof HTMLDetailsElement) sibling.open = false;
+    }
+  }, { capture: true, signal });
+  for (const { page } of pages.values()) {
+    if (page.firstElementChild instanceof HTMLDetailsElement) page.firstElementChild.open = true;
+  }
+  group.before(tabs);
+  panel.classList.add('developer-compact');
+  select(order[0]);
+  signal.addEventListener('abort', () => {
+    tabs.remove();
+    panel.classList.remove('developer-compact');
+    save.hidden = false;
+    if (output) output.hidden = false;
+  }, { once: true });
+}

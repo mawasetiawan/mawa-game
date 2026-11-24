@@ -281,6 +281,68 @@
           ".validate": false
         }
       }
+    },
+    "cameraSettings": {
+      ".read": true,
+      ".write": "auth != null && auth.token.firebase.sign_in_provider == 'google.com' && auth.token.email_verified == true && auth.token.email == 'mawadatulsetiawan@gmail.com' && newData.exists()",
+      ".validate": "newData.hasChild('mode') && (newData.child('mode').val() != 'scripted' || newData.hasChild('script'))",
+      "mode": {
+        ".validate": "newData.val() == 'follow' || newData.val() == 'side' || newData.val() == 'fps' || newData.val() == 'top' || newData.val() == 'drone' || newData.val() == 'rts' || newData.val() == 'scripted'"
+      },
+      "smoothing": {
+        ".validate": "newData.isNumber() && ((newData.parent().child('mode').val() == 'scripted' && newData.val() >= 0 && newData.val() <= 2) || (newData.parent().child('mode').val() == 'follow' && newData.val() >= 0 && newData.val() <= 2) || (newData.parent().child('mode').val() == 'side' && newData.val() >= 0 && newData.val() <= 2) || (newData.parent().child('mode').val() == 'fps' && newData.val() >= 0 && newData.val() <= 2) || (newData.parent().child('mode').val() == 'top' && newData.val() >= 0 && newData.val() <= 2) || (newData.parent().child('mode').val() == 'drone' && newData.val() >= 0 && newData.val() <= 2) || (newData.parent().child('mode').val() == 'rts' && newData.val() >= 0 && newData.val() <= 2))"
+      },
+      "fov": {
+        ".validate": "newData.isNumber() && ((newData.parent().child('mode').val() == 'side' && newData.val() >= 25 && newData.val() <= 110) || (newData.parent().child('mode').val() == 'fps' && newData.val() >= 25 && newData.val() <= 110) || (newData.parent().child('mode').val() == 'top' && newData.val() >= 25 && newData.val() <= 110) || (newData.parent().child('mode').val() == 'drone' && newData.val() >= 25 && newData.val() <= 110) || (newData.parent().child('mode').val() == 'rts' && newData.val() >= 25 && newData.val() <= 110))"
+      },
+      "distance": {
+        ".validate": "newData.isNumber() && ((newData.parent().child('mode').val() == 'side' && newData.val() >= 2 && newData.val() <= 40) || (newData.parent().child('mode').val() == 'top' && newData.val() >= 2 && newData.val() <= 40) || (newData.parent().child('mode').val() == 'drone' && newData.val() >= 2 && newData.val() <= 40) || (newData.parent().child('mode').val() == 'rts' && newData.val() >= 2 && newData.val() <= 40))"
+      },
+      "yaw": {
+        ".validate": "newData.isNumber() && ((newData.parent().child('mode').val() == 'side' && newData.val() >= -180 && newData.val() <= 180) || (newData.parent().child('mode').val() == 'top' && newData.val() >= -180 && newData.val() <= 180) || (newData.parent().child('mode').val() == 'drone' && newData.val() >= -180 && newData.val() <= 180) || (newData.parent().child('mode').val() == 'rts' && newData.val() >= -180 && newData.val() <= 180))"
+      },
+      "pitch": {
+        ".validate": "newData.isNumber() && ((newData.parent().child('mode').val() == 'side' && newData.val() >= 0 && newData.val() <= 80) || (newData.parent().child('mode').val() == 'top' && newData.val() >= 30 && newData.val() <= 89) || (newData.parent().child('mode').val() == 'rts' && newData.val() >= 25 && newData.val() <= 89))"
+      },
+      "height": {
+        ".validate": "newData.isNumber() && ((newData.parent().child('mode').val() == 'side' && newData.val() >= 0 && newData.val() <= 5) || (newData.parent().child('mode').val() == 'fps' && newData.val() >= 0.3 && newData.val() <= 3) || (newData.parent().child('mode').val() == 'top' && newData.val() >= 0 && newData.val() <= 5) || (newData.parent().child('mode').val() == 'drone' && newData.val() >= 0 && newData.val() <= 5))"
+      },
+      "offset": {
+        ".validate": "newData.isNumber() && ((newData.parent().child('mode').val() == 'fps' && newData.val() >= 0 && newData.val() <= 1))"
+      },
+      "look": {
+        ".validate": "newData.isNumber() && newData.parent().child('mode').val() == 'fps' && newData.val() >= 0.2 && newData.val() <= 4"
+      },
+      "altitude": {
+        ".validate": "newData.isNumber() && ((newData.parent().child('mode').val() == 'drone' && newData.val() >= 2 && newData.val() <= 35))"
+      },
+      "lead": {
+        ".validate": "newData.isNumber() && ((newData.parent().child('mode').val() == 'drone' && newData.val() >= 0 && newData.val() <= 1))"
+      },
+      "zoom": {
+        ".validate": "newData.isNumber() && ((newData.parent().child('mode').val() == 'drone' && newData.val() >= 0.2 && newData.val() <= 4) || (newData.parent().child('mode').val() == 'rts' && newData.val() >= 0.2 && newData.val() <= 4))"
+      },
+      "minZoom": {
+        ".validate": "newData.isNumber() && ((newData.parent().child('mode').val() == 'rts' && newData.val() >= 2 && newData.val() <= 40))"
+      },
+      "maxZoom": {
+        ".validate": "newData.isNumber() && ((newData.parent().child('mode').val() == 'rts' && newData.val() >= 2 && newData.val() <= 60))"
+      },
+      "grab": {
+        ".validate": "newData.isNumber() && ((newData.parent().child('mode').val() == 'rts' && newData.val() >= 0.2 && newData.val() <= 4))"
+      },
+      "$other": {
+        ".validate": false
+      },
+      "orbitLook": {
+        ".validate": "newData.isBoolean() && newData.parent().child('mode').val() == 'rts'"
+      },
+      "orbitLookSpeed": {
+        ".validate": "newData.isNumber() && newData.parent().child('mode').val() == 'rts' && newData.val() >= 0.2 && newData.val() <= 4"
+      },
+      "script": {
+        ".validate": "newData.isString() && newData.val().length <= 16384 && newData.parent().child('mode').val() == 'scripted'"
+      }
     }
   }
 }

@@ -1,4 +1,7 @@
-import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel } from './game-settings.mjs?v=4';
+import { mountCameraCuePanel } from './camera-cues.mjs';
+import { mountHudEditor } from './hud-editor.mjs';
+import { mountCameraPanel, parseCamera } from './camera-settings.mjs';
+import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=5';
 import { createLoginHandoff } from './login-handoff.mjs';
 import { firebaseConfig } from './config.mjs';
 import { connectMapReplication } from './map-replication.mjs?v=2';
@@ -90,6 +93,16 @@ async function start() {
   };
   applySettings(defaults);
   const settingsRef = ref(db, 'gameSettings');
+  const cameraRef = ref(db, 'cameraSettings');
+  let sharedCamera = parseCamera();
+  const developerCameras = new Map();
+  const isDeveloper = user => user?.emailVerified && user.email === DEVELOPER_EMAIL;
+  const getCamera = () => {
+    const user = auth.currentUser;
+    return (isDeveloper(user) ? developerCameras.get(user.uid) : null) ?? sharedCamera;
+  };
+  onValue(cameraRef, snapshot => { sharedCamera = parseCamera(snapshot.val()); },
+    error => console.warn('Camera settings:', error));
   fetch('./settings.json?v=hud1').then(response => {
     if (!response.ok) throw Error('Settings snapshot unavailable');
     return response.json();
@@ -159,6 +172,19 @@ async function start() {
   }
 
   const touchChat = matchMedia('(pointer: coarse)').matches;
+  if (!touchChat) {
+    ui.chat.dataset.desktop = '';
+    ui.chatClose.before(ui.send);
+  }
+
+  function updateChatPreview(latest) {
+    if (touchChat) return;
+    const text = latest?.textContent?.trim();
+    ui.chatLatest.replaceChildren(...(latest ? [...latest.childNodes].map(node => node.cloneNode(true)) : ['Open Chat']));
+    ui.chatToggle.title = text || 'Buka chat room';
+    ui.chatToggle.setAttribute('aria-label', text ? 'Buka chat: ' + text : 'Buka chat room');
+  }
+  updateChatPreview();
   let keyboardPage = 'letters';
   let uppercase = false;
 
@@ -240,7 +266,7 @@ async function start() {
   function setChat(open) {
     ui.chat.toggleAttribute('data-open', open);
     ui.chatToggle.setAttribute('aria-expanded', String(open));
-    ui.chatToggle.setAttribute('aria-label', open ? 'Close Chat' : 'Open Chat');
+    if (touchChat) ui.chatToggle.setAttribute('aria-label', open ? 'Close Chat' : 'Open Chat');
     if (!open) {
       showKeyboard(false);
       return;
@@ -283,6 +309,7 @@ async function start() {
     active.messages = null;
     active.chatReady = false;
     ui.messages.replaceChildren();
+    updateChatPreview();
     ui.message.value = '';
     setChat(false);
     composer(active);
@@ -298,13 +325,25 @@ async function start() {
     active.messages = messages;
     const exploration = new AbortController();
     active.exploration = exploration;
-    if (active.user.emailVerified && active.user.email === DEVELOPER_EMAIL) {
+    if (isDeveloper(active.user)) {
       mountDeveloperPanel(ui.world, next => set(settingsRef, next), settings, exploration.signal);
+      mountCameraCuePanel(ui.world, exploration.signal);
+      mountHudEditor(ui.world, exploration.signal, active.user.uid);
+      mountCameraPanel(ui.world, {
+        current: getCamera,
+        applyLocal: next => developerCameras.set(active.user.uid, next),
+        applyShared: async next => {
+          await set(cameraRef, next);
+          developerCameras.delete(active.user.uid);
+        },
+        clearLocal: () => developerCameras.delete(active.user.uid),
+      }, exploration.signal);
+      mountDeveloperTabs(ui.world, exploration.signal);
     }
-    import('./explore.mjs?v=6').then(({ mountExploration }) => {
+    import('./explore.mjs?v=8').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
-      return mountExploration(ui.world, exploration.signal, replication, settings);
+      return mountExploration(ui.world, exploration.signal, replication, settings, getCamera);
     }).catch(error => {
       if (exploration.signal.aborted) return;
       exploration.abort();
@@ -325,6 +364,7 @@ async function start() {
         rows.push(row);
       });
       ui.messages.replaceChildren(...rows.slice(-3));
+      updateChatPreview(rows.at(-1));
       if (nearBottom) ui.messages.scrollTop = ui.messages.scrollHeight;
       active.chatReady = true;
       const enteringMap = ui.world.hidden;
