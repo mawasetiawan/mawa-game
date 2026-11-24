@@ -32,7 +32,14 @@
     "zoom": 1,
     "smoothing": 0.28
   },
-  "effects": {},
+  "effects": {
+    "shake": {
+      "amplitude": 1,
+      "frequency": 11,
+      "duration": 0.35,
+      "decay": 3
+    }
+  },
   "hud": {
     "desktop": {},
     "portrait": {},
