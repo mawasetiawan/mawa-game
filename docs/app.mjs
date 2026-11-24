@@ -1,6 +1,6 @@
 import { loadDeveloperConfig, mountDeveloperConfigPanel } from './developer-config.mjs';
-import { mountCombatPanel } from './combat.mjs?v=5';
-import { mountCharacterPanel } from './character-editor.mjs?v=6';
+import { mountCombatPanel } from './combat.mjs?v=6';
+import { mountCharacterPanel } from './character-editor.mjs?v=7';
 import { mountCameraCuePanel } from './camera-cues.mjs?v=2';
 import { mountHudEditor } from './hud-editor.mjs?v=3';
 import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=2';
@@ -375,14 +375,15 @@ async function start() {
       camera: parseCamera(getCamera()),
       effects: effects.snapshot(),
       hud: hud.snapshot(),
-      combat: combat.draft,
+      combat: { ...combat.draft, audio: combat.audio },
       character: characterEditor.snapshot(),
     }));
     mountDeveloperTabs(ui.world, exploration.signal);
-    import('./explore.mjs?v=15').then(({ mountExploration }) => {
+    import('./explore.mjs?v=16').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
-      return mountExploration(ui.world, exploration.signal, replication, settings, getCamera, characterEditor, combat);
+      return mountExploration(ui.world, exploration.signal, replication, settings, getCamera, characterEditor, combat,
+        id => active.partyState?.roster[id]?.name ?? active.players[id]?.name ?? '');
     }).catch(error => {
       if (exploration.signal.aborted) return;
       exploration.abort();

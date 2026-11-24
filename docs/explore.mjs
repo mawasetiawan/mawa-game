@@ -1,10 +1,11 @@
-import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=5';
-import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs';
+import { createAttackAudio } from './combat-audio.mjs';
+import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=6';
+import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs?v=2';
 import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=2';
 import { createCameraRig } from './camera-rig.mjs';
 import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=3';
 
-export async function mountExploration(world, signal, replication, settings, getCamera = () => null, characterEditor, combatPanel) {
+export async function mountExploration(world, signal, replication, settings, getCamera = () => null, characterEditor, combatPanel, playerName = () => '') {
   const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js');
   if (signal.aborted) return;
   const canvas = world.querySelector('canvas');
@@ -57,9 +58,12 @@ export async function mountExploration(world, signal, replication, settings, get
   let jumpUntil = 0;
 
   const playerId = replication.uid ?? 'local';
+  const playSound = createAttackAudio(signal);
   const combat = createCombat(actor, combatConfig, defaultSpawn, slot => characterEditor?.duration(slot),
     () => triggerCameraCue(world, 'shake'), resetControls, playerId,
-    kind => combatPanel?.solo?.()?.actions[kind]?.shake);
+    kind => combatPanel?.solo?.()?.actions[kind]?.shake,
+    slot => characterEditor?.attackMotion(slot),
+    kind => playSound(combatPanel?.audio?.[kind]));
   const editing = () => world.hasAttribute('data-edit-hud') || world.hasAttribute('data-edit-spawn');
   const control = mountCombatHud(world, actions, signal, {
     press(id) { if (!editing()) { previewFighting = true; combat.press(id); } },
@@ -297,6 +301,13 @@ export async function mountExploration(world, signal, replication, settings, get
         mesh.rotation.y += Math.atan2(Math.sin(turn), Math.cos(turn)) * poseBlend;
       }
       mesh.visible = true;
+      if (pose.anim !== mesh.userData.lastAnim || pose.connection !== mesh.userData.lastConnection) {
+        mesh.userData.lastAnim = pose.anim;
+        mesh.userData.lastConnection = pose.connection;
+        const kind = /^(basic|skill1|skill2|ultimate)Combo[1-4]$/.exec(pose.action ?? '')?.[1];
+        const distance = Math.hypot(mesh.position.x - actor.x, mesh.position.z - actor.z);
+        if (kind && distance < 16) playSound(combatPanel?.audio?.[kind], .65 * (1 - distance / 16));
+      }
       mesh.userData.characterView?.update(pose.character, {
         x: mesh.position.x, y: mesh.position.y - .9 * mesh.scale.y, z: mesh.position.z,
         facingX: Math.sin(mesh.rotation.y), facingZ: Math.cos(mesh.rotation.y),
@@ -323,7 +334,7 @@ export async function mountExploration(world, signal, replication, settings, get
     } else health.remove('local');
     for (const [id, mesh] of remoteCapsules) {
       health.update(id, mesh.position.x, mesh.position.y - .9 * mesh.scale.y + (mesh.userData.characterView?.height() ?? 1.8 * mesh.scale.y) + .19, mesh.position.z,
-        replication.players.get(id)?.hp ?? maxHealth, false, id === 'training' ? 'Target latihan' : '');
+        replication.players.get(id)?.hp ?? maxHealth, false, id === 'training' ? 'Target latihan' : playerName(id));
     }
     renderer.render(scene, camera);
     camera.position.sub(shakeOffset);

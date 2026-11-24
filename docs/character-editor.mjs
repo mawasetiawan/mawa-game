@@ -1,3 +1,4 @@
+import { horizontalRootMotion, rootMotionOptions } from './root-motion.mjs';
 import { packCharacter, resampleCharacter, unpackCharacter } from './character-package.mjs';
 import { attackSlot, combatActions, comboLimit, detectAnimations, loopsByDefault } from './animation-slots.mjs';
 
@@ -100,11 +101,14 @@ function createCharacterView(THREE, scene) {
       const slot = actor.action === 'death' || clipKey(mapping, actor.action) ? actor.action : remaining > 0 ? transition : state;
       const selectedPreview = slot === 'death' ? '' : preview;
       const key = selectedPreview || clipKey(mapping, slot) || (slot === 'death' ? undefined : clipKey(mapping, 'idle'));
-      const clip = clipFor(key);
-      const once = !selectedPreview && (slot === 'death' || (slot !== 'fall' &&
+      const sourceClip = clipFor(key);
+      const motion = !selectedPreview && slot === actor.action && /Combo[1-4]$/.test(slot ?? '') ?
+        horizontalRootMotion(THREE, asset, sourceClip) : null;
+      const clip = motion?.pose ?? sourceClip;
+      const once = !selectedPreview && (slot === 'death' || /Combo[1-4]$/.test(slot ?? '') || (slot !== 'fall' &&
         !(asset.loops[slot] ?? loopsByDefault(slot))));
       const playbackKey = [selectedPreview, slot, key, once, slot === actor.action ? actor.actionSerial : ''].join('/');
-      if (playback !== playbackKey) {
+      if (playback !== playbackKey || (clip && action?.getClip() !== clip)) {
         const previous = action;
         action = clip ? mixer.clipAction(clip).reset() : undefined;
         playback = playbackKey;
@@ -246,7 +250,7 @@ export function mountCharacterPanel(world, signal, preset) {
       });
       if (signal.aborted) return;
       const payload = { version: 1, name, source, options: { ...asset.options }, mapping: { ...asset.mapping }, loops: { ...asset.loops },
-        extra: asset.clips.slice(asset.embeddedCount).map(clip => runtime.serializeClip(clip)) };
+        rootMotion: asset.rootMotion, extra: asset.clips.slice(asset.embeddedCount).map(clip => runtime.serializeClip(clip)) };
       const { file, suffix, rawSize } = await packCharacter(payload);
       if (signal.aborted) return;
       const id = slug + suffix;
@@ -304,6 +308,7 @@ export function mountCharacterPanel(world, signal, preset) {
       const next = runtime.prepare(payload);
       next.source = buffer;
       next.packageId = id;
+      next.rootMotion = rootMotionOptions(overrides?.rootMotion ?? data.rootMotion);
       next.name = String(data.name ?? id).slice(0,60);
       for (const [key, field] of Object.entries(settings)) {
         const value = overrides?.options?.[key] ?? data.options?.[key];
@@ -417,6 +422,23 @@ export function mountCharacterPanel(world, signal, preset) {
     select.value = value;
   }
 
+  const rootToggle = document.createElement('input');
+  rootToggle.type = 'checkbox';
+  const rootSelect = document.createElement('select');
+  const rootLabel = document.createElement('label');
+  rootLabel.append('Root motion serangan (X/Z)', rootToggle);
+  const rootNodeLabel = document.createElement('label');
+  rootNodeLabel.append('Bone root motion', rootSelect);
+  controls.append(rootLabel, rootNodeLabel);
+  rootToggle.addEventListener('change', () => {
+    const asset = library.get(current);
+    asset.rootMotion.enabled = rootToggle.checked;
+    rootSelect.disabled = !rootToggle.checked;
+  }, { signal });
+  rootSelect.addEventListener('change', () => {
+    library.get(current).rootMotion.node = rootSelect.value;
+  }, { signal });
+
   function render() {
     const asset = library.get(current);
     controls.hidden = !asset.scene;
@@ -430,6 +452,11 @@ export function mountCharacterPanel(world, signal, preset) {
     showSizeWarning(0);
     preview = '';
     if (!asset.scene) return;
+    rootToggle.checked = asset.rootMotion.enabled;
+    rootSelect.replaceChildren(new Option('Otomatis (Root / Armature)', ''),
+      ...runtime.motionNodes(asset).map(name => new Option(name, name)));
+    rootSelect.value = asset.rootMotion.node;
+    rootSelect.disabled = !rootToggle.checked;
     for (const [key,field] of Object.entries(settings)) field.value = asset.options[key];
     for (const [key, { select, loop }] of stateInputs) {
       const detected = asset.clips[Number(clipKey(asset.detected, key))];
@@ -535,7 +562,13 @@ export function mountCharacterPanel(world, signal, preset) {
       const asset = library.get(current);
       if (!asset.scene) return null;
       if (!asset.packageId) throw Error('Ekspor karakter aktif lewat Save as Character dan upload paketnya sebelum menyimpan pengaturan.');
-      return { package: asset.packageId, options: asset.options, mapping: asset.mapping, loops: asset.loops };
+      return { package: asset.packageId, options: asset.options, mapping: asset.mapping, loops: asset.loops, rootMotion: asset.rootMotion };
+    },
+    attackMotion(slot) {
+      const asset = library.get(current);
+      const key = clipKey(resolveMapping(asset), slot);
+      if (!key || !runtime) return null;
+      return runtime.attackMotion(asset, asset.clips[Number(key)]);
     },
     duration(slot) {
       const asset = library.get(current);
@@ -573,6 +606,28 @@ export function mountCharacterPanel(world, signal, preset) {
             return Boolean(THREE.PropertyBinding.findNode(mesh,binding.nodeName));
           });
         },
+        motionNodes(asset) {
+          const names = new Set();
+          for (const clip of asset.clips) for (const track of clip.tracks) {
+            if (!track.name.endsWith('.position')) continue;
+            const binding = THREE.PropertyBinding.parseTrackName(track.name);
+            const name = binding.objectName === 'bones' ? binding.objectIndex : binding.nodeName;
+            if (name) names.add(name);
+          }
+          return [...names].sort();
+        },
+        attackMotion(asset, clip) {
+          const motion = horizontalRootMotion(THREE, asset, clip);
+          if (!motion) return null;
+          const scale = asset.fit.scale.x * asset.options.scale;
+          const speed = asset.options.speed;
+          const yaw = asset.options.yaw * Math.PI / 180;
+          const [sin, cos] = [Math.sin(yaw), Math.cos(yaw)];
+          return seconds => {
+            const { x, z } = motion.offset(seconds * speed);
+            return { x: (x * cos + z * sin) * scale, z: (z * cos - x * sin) * scale };
+          };
+        },
         prepare(payload) {
           let meshCount = 0;
           payload.scene.traverse(node => { if (node.isMesh) meshCount++; });
@@ -588,7 +643,7 @@ export function mountCharacterPanel(world, signal, preset) {
           fit.add(offset);
           const clips = payload.animations.slice(0, 64);
           return { scene: payload.scene, fit, clips, mapping: {}, detected: detectAnimations(clips), loops: {}, embeddedCount: clips.length,
-            options: {scale:1,height:0,yaw:0,speed:1,blend:.16} };
+            rootMotion: rootMotionOptions(), options: {scale:1,height:0,yaw:0,speed:1,blend:.16} };
         },
       };
       render();

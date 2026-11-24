@@ -80,11 +80,13 @@ export function createHealthBars(THREE, world, canvas, camera, signal) {
         element.className = 'combat-health' + (local ? ' local' : '');
         const fill = document.createElement('i');
         element.append(fill);
-        if (label) element.append(Object.assign(document.createElement('span'), { textContent: label }));
+        const name = local ? null : document.createElement('span');
+        if (name) element.append(name);
         layer.append(element);
-        bar = { element, fill };
+        bar = { element, fill, name };
         bars.set(id, bar);
       }
+      if (bar.name && bar.name.textContent !== label) bar.name.textContent = label;
       point.set(x, y, z);
       const behind = relative.copy(point).sub(camera.position).dot(direction) <= .1;
       point.project(camera);

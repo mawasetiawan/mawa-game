@@ -1,3 +1,4 @@
+import { attackAudioAccept, createAttackAudio, readAttackSound, soundData } from './combat-audio.mjs';
 import { attackSlot, combatActions, comboLimit } from './animation-slots.mjs';
 
 export const maxHealth = 100;
@@ -10,6 +11,10 @@ const defaultActions = {
 };
 const idleInputs = { x: 0, z: 0 };
 const bound = (value, min, max, fallback) => Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+
+function audioSettings(raw) {
+  return Object.fromEntries(Object.keys(combatActions).map(id => [id, soundData(raw?.[id])]));
+}
 
 export function combatSettings(raw) {
   const result = { respawn: bound(raw?.respawn, .5, 30, 3), spawn: null, actions: {} };
@@ -46,8 +51,8 @@ export function touchesAttack(origin, target, attack) {
   return Math.hypot(target.x - x, target.z - z, capsuleY - y) <= bodyRadius + strikeRadius;
 }
 
-export function createCombat(actor, settings, fallbackSpawn, animationDuration, onShake, onControlReset, identity = 'local', shakeEnabled) {
-  let clock = 0, serial = 0, swing, queued = false, respawnAt = 0;
+export function createCombat(actor, settings, fallbackSpawn, animationDuration, onShake, onControlReset, identity = 'local', shakeEnabled, attackMotion, onAttack) {
+  let clock = 0, serial = 0, swing, combo, respawnAt = 0;
   let stunUntil = 0, slowUntil = 0, graceUntil = 0, impactUntil = 0;
   const connections = new Map();
   const swings = new Map();
@@ -56,28 +61,33 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
 
   function start(id, stage) {
     const slot = attackSlot(id, stage);
-    const seconds = bound(animationDuration(slot), .38, 8, .52 + (id === 'ultimate' ? .22 : 0));
+    const clipDuration = animationDuration(slot);
+    const seconds = Number.isFinite(clipDuration) && clipDuration > 0 ?
+      Math.max(.18, clipDuration) : .52 + (id === 'ultimate' ? .22 : 0);
     const origin = originOf(actor);
     swing = {
-      id, stage, elapsed: 0, seconds, origin, reach: settings.actions[id].reach,
+      id, stage, elapsed: 0, seconds, origin, reach: settings.actions[id].reach, motion: attackMotion?.(slot),
       packet: { kind: id, id: ++serial, yaw: Math.atan2(actor.facingX, actor.facingZ) },
     };
     actor.range = { ...origin, radius: swing.reach };
     actor.action = slot;
     actor.actionSerial = serial;
     actor.dashLeft = 0;
-    queued = false;
+    combo = null;
+    onAttack?.(id);
     swings.set(serial, { kind: id, expires: clock + seconds / .45 + 1 });
   }
 
   function press(id) {
-    if (!Object.hasOwn(settings.actions, id) || actor.hp === 0 || clock < stunUntil) return;
-    if (!swing) start(id, 1);
-    else if (swing.id === id && swing.stage < settings.actions[id].count) queued = true;
+    if (swing || !Object.hasOwn(settings.actions, id) || actor.hp === 0 || clock < stunUntil) return false;
+    const stage = combo?.id === id && clock <= combo.until && combo.stage < settings.actions[id].count ? combo.stage + 1 : 1;
+    start(id, stage);
+    return true;
   }
 
   function interact() {
     if (actor.hp === 0 || clock < stunUntil || swing) return false;
+    combo = null;
     actor.action = 'interact';
     actor.actionSerial = ++serial;
     actor.interactionUntil = clock + bound(animationDuration('interact'), .15, 8, .5);
@@ -89,7 +99,7 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
   }
 
   function stopSwing() {
-    swing = actor.attack = actor.range = null;
+    swing = actor.attack = actor.range = combo = null;
     actor.warping = false;
   }
 
@@ -145,6 +155,14 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
     };
   }
 
+  function applyRootMotion(time) {
+    const { x, z } = swing.motion(time);
+    const warp = swing.warp;
+    const facing = warp ? warp.fromYaw + warp.turn : swing.packet.yaw;
+    actor.x = swing.origin.x + x * Math.cos(facing) + z * Math.sin(facing);
+    actor.z = swing.origin.z + z * Math.cos(facing) - x * Math.sin(facing);
+  }
+
   function tick(dt, now, players) {
     clock += dt;
     if (clock >= impactUntil) actor.impacts = null;
@@ -181,26 +199,32 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
     }
     if (swing) swing.elapsed += dt * (clock < slowUntil ? .45 : 1);
     if (swing && swing.elapsed >= swing.seconds) {
-      if (queued && swing.stage < settings.actions[swing.id].count) start(swing.id, swing.stage + 1);
-      else { stopSwing(); actor.action = ''; }
+      const { id, stage } = swing;
+      if (swing.motion) applyRootMotion(swing.seconds);
+      stopSwing();
+      combo = { id, stage, until: clock + .55 };
+      actor.action = '';
     }
     if (actor.action === 'interact' && clock >= actor.interactionUntil) actor.action = '';
     if (!swing) return;
 
     if (swing.warp === undefined) acquireTarget(players);
     const warp = swing.warp;
-    actor.warping = Boolean(warp && swing.elapsed < warp.duration);
+    actor.warping = Boolean(swing.motion || (warp && swing.elapsed < warp.duration));
     if (warp && !swing.warpFinished) {
       const t = Math.min(1, swing.elapsed / warp.duration);
       const eased = t * t * (3 - 2 * t);
-      actor.x = swing.origin.x + (warp.x - swing.origin.x) * eased;
-      actor.z = swing.origin.z + (warp.z - swing.origin.z) * eased;
+      if (!swing.motion) {
+        actor.x = swing.origin.x + (warp.x - swing.origin.x) * eased;
+        actor.z = swing.origin.z + (warp.z - swing.origin.z) * eased;
+      }
       const yaw = warp.fromYaw + warp.turn * eased;
       actor.facingX = Math.sin(yaw);
       actor.facingZ = Math.cos(yaw);
       swing.packet = { ...swing.packet, yaw: Math.atan2(actor.facingX, actor.facingZ) };
       swing.warpFinished = t === 1;
     }
+    if (swing.motion) applyRootMotion(swing.elapsed);
     const contactStart = Math.max(swing.seconds * .34, warp?.duration ?? 0);
     actor.range = swing.elapsed < contactStart + .15 ? actor.range : null;
     // Range selects a target. Only the strike collider during the contact window deals damage.
@@ -230,6 +254,12 @@ export function mountCombatPanel(world, signal, uid, shared) {
   const localPreset = raw ? combatSettings(raw) : null;
   let solo = localPreset;
   let pending = false;
+  const soundKey = 'mawa-combat-audio-v1:' + uid;
+  let localAudio;
+  try { localAudio = JSON.parse(localStorage.getItem(soundKey)); } catch {}
+  const audio = audioSettings(localAudio ?? shared?.initial?.audio);
+  const playSound = createAttackAudio(signal);
+  let loadingSounds = 0, audioEdited = false;
   const section = document.createElement('details');
   const heading = document.createElement('summary');
   heading.textContent = 'Combat';
@@ -301,10 +331,40 @@ export function mountCombatPanel(world, signal, uid, shared) {
     field(group, 'Efek hit', 'select', () => rule().effect, value => rule().effect = value);
     number('Durasi efek (detik)', 'seconds', .1, 4, 'any');
     field(group, 'Camera shake saat hit', 'checkbox', () => rule().shake, value => rule().shake = value);
+    const soundLabel = document.createElement('label');
+    const soundInput = Object.assign(document.createElement('input'), { type: 'file', accept: attackAudioAccept });
+    soundLabel.append('File suara serangan', soundInput);
+    const soundActions = Object.assign(document.createElement('div'), { className: 'camera-buttons' });
+    function refreshSound() {
+      test.disabled = remove.disabled = !audio[id];
+      test.textContent = audio[id] ? 'Tes Suara' : 'Suara kosong';
+    }
+    const test = button(soundActions, 'Tes Suara', () => playSound(audio[id]));
+    const remove = button(soundActions, 'Hapus Suara', () => { audio[id] = ''; audioEdited = true; refreshSound(); });
+    refreshSound();
+    soundInput.addEventListener('change', async () => {
+      const file = soundInput.files?.[0];
+      if (!file) return;
+      soundInput.value = '';
+      soundInput.disabled = remove.disabled = true;
+      loadingSounds++;
+      try {
+        const value = soundData(await readAttackSound(file));
+        if (!value) throw Error('Suara tidak valid.');
+        if (!signal.aborted) { audio[id] = value; audioEdited = true; status.textContent = 'Suara siap. Pilih Simpan Combat untuk menyimpan di perangkat.'; }
+      } catch (error) {
+        if (!signal.aborted) status.textContent = error.message;
+      } finally {
+        loadingSounds--;
+        soundInput.disabled = false;
+        refreshSound();
+      }
+    }, { signal });
+    group.append(soundLabel, soundActions);
     section.append(group);
   }
   const save = button(section, local && shared ? 'Simpan Combat Solo' : 'Simpan Combat', async () => {
-    if (pending) return;
+    if (pending || loadingSounds) return;
     const invalid = [...section.querySelectorAll('input')].find(input => !input.checkValidity() ||
       (input.type === 'number' && !Number.isFinite(input.valueAsNumber)));
     if (invalid) {
@@ -314,6 +374,10 @@ export function mountCombatPanel(world, signal, uid, shared) {
     }
     pending = save.disabled = true;
     try {
+      if (audioEdited) {
+        localStorage.setItem(soundKey, JSON.stringify(audio));
+        audioEdited = false;
+      }
       if (shared?.save) {
         await shared.save(combatSettings(settings));
         status.textContent = 'Pengaturan combat diterapkan untuk semua pemain.';
@@ -338,5 +402,5 @@ export function mountCombatPanel(world, signal, uid, shared) {
     }
   });
   if (unwatch) signal.addEventListener('abort', unwatch, { once: true });
-  return { applied, draft: settings, solo: () => solo };
+  return { applied, draft: settings, solo: () => solo, audio };
 }
