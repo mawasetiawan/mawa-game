@@ -10,7 +10,7 @@
     "zoomMax": 14,
     "orbitSpeed": 1,
     "zoomSpeed": 1,
-    "walkSpeed": 4.2,
+    "walkSpeed": 2.8,
     "runSpeed": 6.3,
     "sprintSpeed": 8.9,
     "dashSpeed": 15,
@@ -31,6 +31,19 @@
     "lead": 0.22,
     "zoom": 1,
     "smoothing": 0.28
+  },
+  "cameraPresets": {
+    "drone": {
+      "mode": "drone",
+      "fov": 58,
+      "altitude": 9,
+      "distance": 11,
+      "yaw": 25,
+      "height": 1,
+      "lead": 0.22,
+      "zoom": 1,
+      "smoothing": 0.28
+    }
   },
   "effects": {
     "shake": {
@@ -81,6 +94,12 @@
         "seconds": 0.65,
         "shake": true
       }
+    },
+    "audio": {
+      "basic": "",
+      "skill1": "",
+      "skill2": "",
+      "ultimate": ""
     }
   },
   "character": {
@@ -90,9 +109,13 @@
       "height": 0,
       "yaw": 0,
       "speed": 1,
-      "blend": 0.16
+      "blend": 0.5
     },
     "mapping": {},
-    "loops": {}
+    "loops": {},
+    "rootMotion": {
+      "enabled": true,
+      "node": ""
+    }
   }
 }
