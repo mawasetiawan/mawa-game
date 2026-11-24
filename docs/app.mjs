@@ -1,7 +1,7 @@
 import { mountCameraCuePanel } from './camera-cues.mjs';
 import { mountHudEditor } from './hud-editor.mjs?v=2';
-import { mountCameraPanel, parseCamera } from './camera-settings.mjs';
-import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=6';
+import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=2';
+import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=7';
 import { createLoginHandoff } from './login-handoff.mjs';
 import { firebaseConfig } from './config.mjs';
 import { connectMapReplication } from './map-replication.mjs?v=2';
@@ -87,19 +87,25 @@ async function start() {
   const { ref, push, set, remove, get, onValue, onDisconnect, query, orderByKey, limitToLast } = data;
   let session;
   const settings = { ...defaults };
-  const applySettings = values => {
-    Object.assign(settings, parseSettings(values));
+  const personalSettings = new Map();
+  let sharedSettings = { ...defaults };
+  const refreshSettings = user => {
+    Object.assign(settings, parseSettings({ ...sharedSettings, ...personalSettings.get(user?.uid) }));
     ui.world.style.setProperty('--hud-scale', settings.hudScale / 100);
   };
-  applySettings(defaults);
+  const applySettings = values => {
+    sharedSettings = parseSettings(values);
+    refreshSettings(auth.currentUser);
+  };
+  refreshSettings(auth.currentUser);
   const settingsRef = ref(db, 'gameSettings');
   const cameraRef = ref(db, 'cameraSettings');
   let sharedCamera = parseCamera();
-  const developerCameras = new Map();
+  const personalCameras = new Map();
   const isDeveloper = user => user?.emailVerified && user.email === DEVELOPER_EMAIL;
   const getCamera = () => {
     const user = auth.currentUser;
-    return (isDeveloper(user) ? developerCameras.get(user.uid) : null) ?? sharedCamera;
+    return personalCameras.get(user?.uid) ?? sharedCamera;
   };
   onValue(cameraRef, snapshot => { sharedCamera = parseCamera(snapshot.val()); },
     error => console.warn('Camera settings:', error));
@@ -324,21 +330,25 @@ async function start() {
     active.messages = messages;
     const exploration = new AbortController();
     active.exploration = exploration;
-    if (isDeveloper(active.user)) {
-      mountDeveloperPanel(ui.world, next => set(settingsRef, next), settings, exploration.signal, active.user.uid);
-      mountCameraCuePanel(ui.world, exploration.signal);
-      mountHudEditor(ui.world, exploration.signal, active.user.uid);
-      mountCameraPanel(ui.world, {
-        current: getCamera,
-        applyLocal: next => developerCameras.set(active.user.uid, next),
-        applyShared: async next => {
-          await set(cameraRef, next);
-          developerCameras.delete(active.user.uid);
-        },
-        clearLocal: () => developerCameras.delete(active.user.uid),
-      }, exploration.signal);
-      mountDeveloperTabs(ui.world, exploration.signal);
-    }
+    const uid = active.user.uid;
+    const canShare = isDeveloper(active.user);
+    const saveSettings = canShare ? next => set(settingsRef, next) : next => {
+      personalSettings.set(uid, next);
+      refreshSettings(active.user);
+    };
+    mountDeveloperPanel(ui.world, saveSettings, settings, exploration.signal, uid, canShare);
+    mountCameraCuePanel(ui.world, exploration.signal);
+    mountHudEditor(ui.world, exploration.signal, uid);
+    mountCameraPanel(ui.world, {
+      current: getCamera,
+      applyLocal: next => personalCameras.set(uid, next),
+      applyShared: canShare ? async next => {
+        await set(cameraRef, next);
+        personalCameras.delete(uid);
+      } : undefined,
+      clearLocal: () => personalCameras.delete(uid),
+    }, exploration.signal);
+    mountDeveloperTabs(ui.world, exploration.signal);
     import('./explore.mjs?v=8').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
@@ -556,6 +566,7 @@ async function start() {
     session?.stop.forEach(stop => stop());
     if (session) closeMap(session);
     session = null;
+    refreshSettings(user);
     for (const list of [ui.account, ui.players, ui.invites, ui.roster]) list.replaceChildren();
     ui.count.textContent = '';
     ui.invitations.hidden = true;

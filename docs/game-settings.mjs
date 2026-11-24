@@ -67,13 +67,16 @@ export function parseSettings(values) {
   return clean;
 }
 
-export function mountDeveloperPanel(world, save, current, signal, developerUid) {
+export function mountDeveloperPanel(world, save, current, signal, developerUid, canShare = true) {
   const toggle = world.querySelector('#openDeveloper');
   const panel = world.querySelector('#developerPanel');
   const form = panel.querySelector('form');
   const output = panel.querySelector('[role=status]');
   const group = form.querySelector('.developer-fields');
   const inputs = new Map();
+  const saveButton = form.querySelector('button[type=submit]');
+  const previousSaveText = saveButton.lastChild.textContent;
+  if (!canShare) saveButton.lastChild.textContent = 'Simpan Lokal';
   function disclosure(parent, name) {
     const details = document.createElement('details');
     const summary = document.createElement('summary');
@@ -84,6 +87,7 @@ export function mountDeveloperPanel(world, save, current, signal, developerUid) 
   }
 
   for (const [category, sections] of Object.entries(categories)) {
+    if (category === 'Gerakan' && !canShare) continue;
     const categoryNode = disclosure(group, category);
     for (const [section, keys] of Object.entries(sections)) {
       const sectionNode = disclosure(categoryNode, section);
@@ -158,7 +162,7 @@ export function mountDeveloperPanel(world, save, current, signal, developerUid) 
       output.textContent = 'Min FOV harus ≤ Max FOV.';
       return;
     }
-    if (next.zoomMin > next.zoomMax || next.walkSpeed > next.runSpeed || next.runSpeed > next.sprintSpeed) {
+    if (next.zoomMin > next.zoomMax || (canShare && (next.walkSpeed > next.runSpeed || next.runSpeed > next.sprintSpeed))) {
       output.textContent = 'Zoom minimum harus ≤ maksimum. Kecepatan harus berurutan dari jalan, lari, lalu sprint.';
       return;
     }
@@ -167,7 +171,7 @@ export function mountDeveloperPanel(world, save, current, signal, developerUid) 
     output.textContent = 'Menyimpan…';
     try {
       await save(next);
-      if (!signal.aborted) output.textContent = 'Tersimpan dan berlaku untuk semua pemain.';
+      if (!signal.aborted) output.textContent = canShare ? 'Tersimpan dan berlaku untuk semua pemain.' : 'Tersimpan untuk sesi ini.';
     } catch (error) {
       console.error(error);
       if (!signal.aborted) output.textContent = 'Gagal menyimpan pengaturan. Coba lagi.';
@@ -178,6 +182,7 @@ export function mountDeveloperPanel(world, save, current, signal, developerUid) 
   signal.addEventListener('abort', () => {
     close();
     toggle.hidden = true;
+    saveButton.lastChild.textContent = previousSaveText;
     group.replaceChildren();
   }, { once: true });
 }
@@ -197,6 +202,7 @@ export function mountDeveloperTabs(world, signal) {
   const sections = [...group.children];
   const tabs = document.createElement('div');
   tabs.className = 'developer-tabs';
+  tabs.style.setProperty('--developer-tab-count', sections.some(node => node.querySelector('summary')?.textContent === 'Gerakan') ? '4' : '3');
   tabs.setAttribute('role', 'tablist');
   tabs.setAttribute('aria-label', 'Kategori Developer');
   const pages = new Map();

@@ -249,7 +249,7 @@ html.immersive-game,html.immersive-game body{background:#48677d}
 .gameplay-hud .developer-compact header button svg{width:14px;height:14px}
 .gameplay-hud .developer-compact form{display:flex;flex-direction:column;min-height:0;padding:8px;gap:6px}
 .gameplay-hud .developer-tabs{
-  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;flex:none;
+  display:grid;grid-template-columns:repeat(var(--developer-tab-count,4),minmax(0,1fr));gap:3px;flex:none;
   padding:3px;border:1px solid #e6e7ff14;border-radius:11px;background:#07081268
 }
 .gameplay-hud .developer-tabs button{
@@ -313,3 +313,5 @@ html.immersive-game,html.immersive-game body{background:#48677d}
 .pattern-grid button[aria-pressed=true]::after{background:#64e6b0;border-color:#94f8cc;box-shadow:0 0 0 5px #64e6b033}
 .pattern-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
 .pattern-actions button{min-height:30px;padding:4px 8px;font-size:11px}
+
+@media(max-width:665px){.gameplay-hud .world-toolbar #openDeveloper span{display:inline;font-size:10px}}

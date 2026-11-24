@@ -137,8 +137,8 @@ export function mountCameraPanel(world, { current, applyLocal, applyShared, clea
   controls.addEventListener('keydown', event => {
     if (event.key === 'Enter') event.preventDefault();
   }, { signal });
-  action('Terapkan untuk Developer', applyLocal, 'Kamera diterapkan hanya di layar ini.');
-  action('Terapkan ke Semua Pemain', applyShared, 'Pengaturan bersama diterapkan.');
+  action(applyShared ? 'Terapkan untuk Developer' : 'Terapkan untuk Saya', applyLocal, 'Kamera diterapkan hanya di layar ini.');
+  if (applyShared) action('Terapkan ke Semua Pemain', applyShared, 'Pengaturan bersama diterapkan.');
   const reset = document.createElement('button');
   reset.type = 'button';
   reset.textContent = 'Ikuti Kamera Bersama';
