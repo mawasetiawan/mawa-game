@@ -1,7 +1,8 @@
+import { mountCharacterPanel } from './character-editor.mjs';
 import { mountCameraCuePanel } from './camera-cues.mjs';
 import { mountHudEditor } from './hud-editor.mjs?v=2';
 import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=2';
-import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=7';
+import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=8';
 import { createLoginHandoff } from './login-handoff.mjs';
 import { firebaseConfig } from './config.mjs';
 import { connectMapReplication } from './map-replication.mjs?v=2';
@@ -348,11 +349,12 @@ async function start() {
       } : undefined,
       clearLocal: () => personalCameras.delete(uid),
     }, exploration.signal);
+    const characterEditor = mountCharacterPanel(ui.world, exploration.signal);
     mountDeveloperTabs(ui.world, exploration.signal);
-    import('./explore.mjs?v=8').then(({ mountExploration }) => {
+    import('./explore.mjs?v=9').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
-      return mountExploration(ui.world, exploration.signal, replication, settings, getCamera);
+      return mountExploration(ui.world, exploration.signal, replication, settings, getCamera, characterEditor);
     }).catch(error => {
       if (exploration.signal.aborted) return;
       exploration.abort();

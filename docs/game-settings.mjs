@@ -197,12 +197,12 @@ export function mountDeveloperTabs(world, signal) {
     camera: ['◉', 'Kamera', ['Mode Kamera', 'Kamera']],
     effects: ['✦', 'Efek', ['Camera Shake & Fade']],
     hud: ['▦', 'HUD', ['Tata Letak HUD', 'Tampilan']],
+    character: ['◇', 'Karakter', ['Edit Karakter']],
     movement: ['↗', 'Gerak', ['Gerakan']],
   };
   const sections = [...group.children];
   const tabs = document.createElement('div');
   tabs.className = 'developer-tabs';
-  tabs.style.setProperty('--developer-tab-count', sections.some(node => node.querySelector('summary')?.textContent === 'Gerakan') ? '4' : '3');
   tabs.setAttribute('role', 'tablist');
   tabs.setAttribute('aria-label', 'Kategori Developer');
   const pages = new Map();
@@ -232,6 +232,7 @@ export function mountDeveloperTabs(world, signal) {
   }
   const order = [...pages.keys()];
   if (!order.length) return;
+  tabs.style.setProperty('--developer-tab-count', order.length);
 
   function select(id) {
     for (const [key, { button, page }] of pages) {
@@ -240,8 +241,8 @@ export function mountDeveloperTabs(world, signal) {
       button.tabIndex = active ? 0 : -1;
       page.hidden = !active;
     }
-    save.hidden = id === 'effects';
-    if (output) output.hidden = id === 'effects';
+    save.hidden = id === 'effects' || id === 'character';
+    if (output) output.hidden = id === 'effects' || id === 'character';
     group.scrollTop = 0;
     panel.dispatchEvent(new CustomEvent('mawa:developer-tab', { detail: id }));
   }

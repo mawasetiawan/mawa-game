@@ -2,7 +2,7 @@ import { createCameraCues } from './camera-cues.mjs';
 import { createCameraRig } from './camera-rig.mjs';
 import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=2';
 
-export async function mountExploration(world, signal, replication, settings, getCamera = () => null) {
+export async function mountExploration(world, signal, replication, settings, getCamera = () => null, characterEditor) {
   const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js');
   if (signal.aborted) return;
   const canvas = world.querySelector('canvas');
@@ -30,6 +30,7 @@ export async function mountExploration(world, signal, replication, settings, get
   const capsule = new THREE.Mesh(capsuleGeometry, localMaterial);
   const remoteCapsules = new Map();
   scene.add(capsule);
+  const updateCharacter = characterEditor?.attach(THREE, scene);
   const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 85);
   const actor = createMovement();
   const spawnAngle = replication.spawnAngle / 4294967296 * Math.PI * 2;
@@ -228,6 +229,7 @@ export async function mountExploration(world, signal, replication, settings, get
       remoteCapsules.delete(id);
     }
     cameraRig.update(dt, capsule, scale);
+    updateCharacter?.(actor, dt, capsule);
     const [shakeX, shakeY, shakeZ] = tickCues(dt);
     shakeOffset.set(shakeX, shakeY, shakeZ).applyQuaternion(camera.quaternion);
     camera.position.add(shakeOffset);

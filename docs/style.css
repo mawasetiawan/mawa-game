@@ -315,3 +315,6 @@ html.immersive-game,html.immersive-game body{background:#48677d}
 .pattern-actions button{min-height:30px;padding:4px 8px;font-size:11px}
 
 @media(max-width:665px){.gameplay-hud .world-toolbar #openDeveloper span{display:inline;font-size:10px}}
+
+.gameplay-hud .developer-tabs:has(#developer-tab-character) button{gap:2px;font-size:10px}
+@media(max-width:360px){.gameplay-hud .developer-tabs:has(#developer-tab-character) button{flex-direction:column;gap:0;min-height:32px}}
