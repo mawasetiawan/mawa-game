@@ -167,7 +167,6 @@ html.immersive-game,html.immersive-game body{background:#48677d}
 
 #installGame{font-size:.78rem;line-height:1.2;padding:.35rem .55rem}
 .chat.panel[data-open][data-keyboard]{width:min(460px,calc((100% - 28px) / var(--hud-size,.9)));bottom:max(10px,env(safe-area-inset-bottom))}
-.chat[data-keyboard] form{margin-inline:5px}
 .chat[data-keyboard] ol{max-height:min(76px,15dvh);overflow:auto}
 .chat[data-keyboard] textarea{max-height:54px}
 #chatKeyboard{display:grid;gap:3px;margin-top:5px;touch-action:manipulation}
@@ -175,3 +174,15 @@ html.immersive-game,html.immersive-game body{background:#48677d}
 #chatKeyboard button{flex:1;min-width:0;min-height:clamp(22px,5.5dvh,34px);padding:0 1px;border-radius:6px;font:600 clamp(10px,2.6vw,14px)/1 system-ui;touch-action:manipulation}
 #chatKeyboard button[data-key="Spasi"]{flex:3}
 @media(max-width:500px){main>header{flex-wrap:wrap;gap:.35rem}.game-version{white-space:nowrap}}
+
+.gameplay-hud .chat.panel[data-open]{padding:0;border:0;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;overflow:visible}
+.chat[data-open] #chatToggle,.chat:not([data-open]) #composer,.chat:not([data-keyboard]) .chat-key-footer [data-key]{display:none}
+.chat[data-open] #composer{display:grid;gap:4px;padding:7px;border:1px solid #cbdad980;border-radius:13px;background:#13282edb;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.chat .chat-draft{display:grid;grid-template-columns:minmax(0,1fr) 42px;gap:6px;align-items:start}
+.gameplay-hud #chatClose{padding:0;min-height:36px;background:#a83136;border-color:#ee7e78}
+.chat[data-open] #messages{width:min(100%,356px);justify-self:center;margin:0 0 7px;border-radius:10px;background:#15272c92;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);max-height:none;overflow:hidden}
+.chat #messages li{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat .chat-key-footer{display:grid;grid-template-columns:1fr;justify-items:end;gap:4px}
+.chat[data-keyboard] .chat-key-footer{grid-template-columns:minmax(42px,15%) minmax(0,1.25fr) minmax(64px,1fr);justify-items:stretch}
+.gameplay-hud .chat-key-footer button{min-height:clamp(23px,6.4dvh,36px);padding:0 7px;font-size:13px;border-radius:6px}
+.gameplay-hud .chat-key-footer #send{width:auto;padding-inline:12px}
