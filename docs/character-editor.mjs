@@ -403,6 +403,8 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   section.append(edit);
   const status = document.createElement('p');
   status.setAttribute('role', 'status');
+  status.className = 'character-import-status';
+  const clipSummary = Object.assign(document.createElement('p'), { className: 'character-gallery-hint', hidden: true });
   const model = document.createElement('select');
   model.setAttribute('aria-label', 'Pilih karakter');
   const modelLabel = document.createElement('label');
@@ -433,8 +435,8 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     return item;
   }
   const meshFile = fileInput(), clipsFile = fileInput();
-  const importMesh = button('Impor Mesh GLB / FBX', () => meshFile.click());
-  const importClips = button('Impor Animasi GLB / FBX', () => clipsFile.click());
+  const importMesh = button('Impor Karakter GLB / FBX', () => meshFile.click());
+  const importClips = button('Tambah Animasi Terpisah', () => clipsFile.click());
   const remove = button('Lepas dari editor', () => {
     const asset = library.get(current);
     if (!asset.scene) return;
@@ -446,7 +448,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     status.textContent = 'Karakter dilepas dari editor sesi ini. Paket GitHub tetap tersedia.';
   });
   remove.title = 'Keluarkan karakter dari editor di sesi ini.';
-  edit.append(collection, controls);
+  edit.append(collection, status, clipSummary, controls);
   const sizeWarning = document.createElement('p');
   sizeWarning.className = 'character-size-warning';
   sizeWarning.setAttribute('role', 'status');
@@ -715,12 +717,14 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   addAnimationGroups('Locomotion', groups);
   addAnimationGroups('Aksi', actionGroups);
   const audition = document.createElement('select');
-  audition.setAttribute('aria-label', 'Preview klip');
-  audition.addEventListener('change', () => { preview = audition.value; }, { signal });
+  audition.setAttribute('aria-label', 'Preview animasi');
+  audition.addEventListener('change', () => {
+    preview = audition.value;
+    if (preview) usingPlayer = false;
+  }, { signal });
   const previewLabel = document.createElement('label');
-  previewLabel.append('Preview klip', audition);
-  controls.append(previewLabel);
-  section.append(status);
+  previewLabel.append('Preview animasi', audition);
+  controls.prepend(previewLabel);
   section.addEventListener('keydown', event => {
     if (event.key === 'Enter' && event.target.matches('input')) event.preventDefault();
   }, { signal });
@@ -763,6 +767,12 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   function render() {
     const asset = library.get(current);
     controls.hidden = !asset.scene;
+    clipSummary.hidden = !asset.scene;
+    if (asset.scene) {
+      const extra = asset.clips.length - asset.embeddedCount;
+      clipSummary.textContent = asset.embeddedCount + ' klip bawaan dari file karakter' +
+        (extra ? ' · ' + extra + ' klip tambahan' : '') + '.';
+    }
     importMesh.disabled = pending || !runtime || library.size >= 6;
     importClips.disabled = pending || !runtime || !asset.scene || asset.clips.length >= 64;
     remove.disabled = pending || !asset.scene;
@@ -791,7 +801,8 @@ export function mountCharacterPanel(world, signal, preset, publication) {
       select.value = asset.mapping[key] ?? '';
       loop.checked = key === 'fall' || (key !== 'death' && (asset.loops[key] ?? loopsByDefault(key)));
     }
-    fill(audition,asset,'','Ikuti gerakan');
+    audition.disabled = pending || !asset.clips.length;
+    fill(audition, asset, '', asset.clips.length ? 'Pilih klip untuk diputar' : 'Tidak ada klip Animasi');
   }
   model.add(new Option('Capsule bawaan','capsule'));
   model.addEventListener('change', () => { current = model.value; usingPlayer = false; render(); }, {signal});
@@ -803,6 +814,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     const asset = library.get(current);
     pending = true;
     render();
+    status.dataset.state = 'pending';
     status.textContent = 'Memuat ' + file.name + '…';
     let payload;
     try {
@@ -829,13 +841,18 @@ export function mountCharacterPanel(world, signal, preset, publication) {
         library.set(current,next);
         model.add(new Option(file.name, current));
         model.value = current;
-        status.textContent = Object.keys(next.detected).length + ' slot terdeteksi dari nama klip.' +
+        status.textContent = file.name + ' berhasil dimuat. ' +
+          (next.embeddedCount ? next.embeddedCount + ' klip bawaan siap diputar lewat Preview animasi.' : 'File ini tidak berisi klip animasi yang terbaca.') +
           (payload.externalTextures ? ' Tekstur eksternal dilewati. Sematkan tekstur saat ekspor FBX agar tampil di game.' : '');
         payload = null;
       }
+      status.dataset.state = 'success';
       usingPlayer = false;
     } catch (error) {
-      if (!signal.aborted) status.textContent = error.message || 'File karakter gagal dimuat.';
+      if (!signal.aborted) {
+        status.dataset.state = 'error';
+        status.textContent = 'Gagal impor ' + file.name + '. ' + (error.message || 'File karakter gagal dimuat.');
+      }
     } finally {
       if (payload) disposeModel(payload.scene);
       pending = false;

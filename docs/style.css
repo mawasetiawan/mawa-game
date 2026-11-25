@@ -429,6 +429,9 @@ html.immersive-game,html.immersive-game body{background:#48677d}
 }
 .gameplay-hud .character-gallery-status[data-state=success],.character-delete-dialog[data-state=success] p{color:#d1f6b8}
 .gameplay-hud .character-gallery-status[data-state=error],.character-delete-dialog[data-state=error] p{color:#ffd0c9}
+.gameplay-hud .character-import-status:not(:empty){margin:.45rem 0;padding:.45rem .6rem;border-radius:8px;background:#38506755;line-height:1.35}
+.gameplay-hud .character-import-status[data-state=success]{color:#d1f6b8}
+.gameplay-hud .character-import-status[data-state=error]{color:#ffd0c9}
 .gameplay-hud .character-delete-dialog button:nth-child(2){border-color:#d17e7499;color:#ffd0c9}
 @media(max-width:665px){
   .gameplay-hud .world-toolbar #switchActor{gap:4px;white-space:nowrap}
