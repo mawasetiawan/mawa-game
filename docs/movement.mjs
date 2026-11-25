@@ -23,7 +23,7 @@ export function createMovement() {
   };
 }
 
-export function stepMovement(actor, input, dt, settings = defaults) {
+export function stepMovement(actor, input, dt, settings = defaults, canAnimate = () => true) {
   const magnitude = Math.hypot(input.x, input.z);
   const moving = magnitude > 0.08;
   const strength = Math.min(1, magnitude);
@@ -31,7 +31,7 @@ export function stepMovement(actor, input, dt, settings = defaults) {
   const z = moving ? input.z / magnitude : 0;
   const grounded = actor.state === ActorState.GROUNDED;
 
-  if (grounded && input.crouch) {
+  if (grounded && input.crouch && (actor.stance === Stance.CROUCH || canAnimate('crouchIdle'))) {
     actor.stance = actor.stance === Stance.CROUCH ? Stance.STAND : Stance.CROUCH;
   }
   if (!actor.dashLeft && moving) {
@@ -42,12 +42,12 @@ export function stepMovement(actor, input, dt, settings = defaults) {
     actor.facingX = Math.sin(yaw);
     actor.facingZ = Math.cos(yaw);
   }
-  if (grounded && input.dash && actor.stance === Stance.STAND && !actor.dashLeft) {
+  if (grounded && input.dash && actor.stance === Stance.STAND && !actor.dashLeft && canAnimate('dash')) {
     actor.dashLeft = settings.dashSeconds;
     actor.dashX = moving ? x : actor.facingX;
     actor.dashZ = moving ? z : actor.facingZ;
   }
-  if (grounded && input.jump && !actor.dashLeft) {
+  if (grounded && input.jump && !actor.dashLeft && canAnimate('jump')) {
     actor.verticalSpeed = settings.jumpSpeed;
     actor.state = ActorState.IN_AIR;
   }
@@ -61,8 +61,10 @@ export function stepMovement(actor, input, dt, settings = defaults) {
     remaining -= time;
   }
   const locomotion = actor.stance === Stance.CROUCH ? Gait.WALK :
-    input.sprint ? Gait.SPRINT : input.walk ? Gait.WALK : Gait.RUN;
-  if (moving && remaining > 0) {
+    input.sprint && canAnimate(Gait.SPRINT) ? Gait.SPRINT :
+      input.walk && canAnimate(Gait.WALK) ? Gait.WALK : Gait.RUN;
+  const canMove = moving && canAnimate(actor.stance === Stance.CROUCH ? 'crouchMove' : locomotion);
+  if (canMove && remaining > 0) {
     const speed = locomotion === Gait.WALK ? settings.walkSpeed : locomotion === Gait.SPRINT ? settings.sprintSpeed : settings.runSpeed;
     actor.x += x * speed * strength * remaining;
     actor.z += z * speed * strength * remaining;
@@ -75,5 +77,5 @@ export function stepMovement(actor, input, dt, settings = defaults) {
       actor.verticalSpeed > 0 ? ActorState.IN_AIR : ActorState.FALLING;
   }
   actor.gait = actor.dashLeft > 0 ? Gait.DASH :
-    actor.state !== ActorState.GROUNDED ? Gait.JUMP : moving ? locomotion : Gait.STOP;
+    actor.state !== ActorState.GROUNDED ? Gait.JUMP : canMove ? locomotion : Gait.STOP;
 }

@@ -16,10 +16,13 @@ const actionGroups = {
 const states = Object.assign({}, ...Object.values(groups), ...Object.values(actionGroups));
 const resolveMapping = asset => ({ ...asset.detected, ...asset.mapping });
 function clipKey(mapping, slot) {
-  if (mapping[slot] === 'off') return undefined;
-  const firstCombo = slot?.replace(/Combo[2-4]$/, 'Combo1');
-  const key = mapping[slot] ?? mapping[firstCombo];
+  const key = mapping[slot];
   return /^\d+$/.test(key ?? '') ? key : undefined;
+}
+
+function animationClip(asset, slot) {
+  const clip = asset.clips?.[Number(clipKey(resolveMapping(asset), slot))];
+  return clip?.tracks?.length && Number.isFinite(clip.duration) && clip.duration > 0 ? clip : undefined;
 }
 const mib = 1024 * 1024;
 const packageName = /^[a-z0-9-]+\.character\.json(?:\.gz)?$/;
@@ -93,22 +96,31 @@ function createCharacterView(THREE, scene) {
       crouching = nextCrouch;
       airborne = nextAir;
       if (nextAir || preview || actor.action) remaining = 0;
-      if (edge && !preview && !actor.action && clips[Number(mapping[edge])]) {
+      const edgeClip = edge && animationClip(asset, edge);
+      if (edgeClip && !preview && !actor.action) {
         transition = edge;
-        remaining = clips[Number(mapping[edge])].duration;
+        remaining = edgeClip.duration;
       }
       const clipFor = key => key ? clips[Number(key)] : undefined;
       const slot = actor.action === 'death' || clipKey(mapping, actor.action) ? actor.action : remaining > 0 ? transition : state;
       const selectedPreview = slot === 'death' ? '' : preview;
-      const key = selectedPreview || clipKey(mapping, slot) || (slot === 'death' ? undefined : clipKey(mapping, 'idle'));
+      const slotKey = clipKey(mapping, slot);
+      const fallingWithJump = state === 'fall' && !actor.action && !slotKey && !selectedPreview;
+      const key = selectedPreview || slotKey || (fallingWithJump ? clipKey(mapping, 'jump') : undefined) ||
+        (slot === 'death' ? undefined : clipKey(mapping, 'idle'));
       const sourceClip = clipFor(key);
       const motion = !selectedPreview && slot === actor.action && /Combo[1-4]$/.test(slot ?? '') ?
         horizontalRootMotion(THREE, asset, sourceClip) : null;
       const clip = motion?.pose ?? sourceClip;
-      const once = !selectedPreview && (slot === 'death' || /Combo[1-4]$/.test(slot ?? '') || (slot !== 'fall' &&
+      const once = !selectedPreview && (slot === 'death' || fallingWithJump || /Combo[1-4]$/.test(slot ?? '') || (slot !== 'fall' &&
         !(asset.loops[slot] ?? loopsByDefault(slot))));
-      const playbackKey = [selectedPreview, slot, key, once, slot === actor.action ? actor.actionSerial : ''].join('/');
-      if (playback !== playbackKey || (clip && action?.getClip() !== clip)) {
+      const playbackKey = [selectedPreview, fallingWithJump ? 'jump' : slot, key, once, slot === actor.action ? actor.actionSerial : ''].join('/');
+      if (!clip) {
+        if (action) action.paused = true;
+        playback = undefined;
+        return;
+      }
+      if (playback !== playbackKey || action?.getClip() !== clip) {
         const previous = action;
         action = clip ? mixer.clipAction(clip).reset() : undefined;
         playback = playbackKey;
@@ -471,9 +483,11 @@ export function mountCharacterPanel(world, signal, preset) {
     rootSelect.disabled = !rootToggle.checked;
     for (const [key,field] of Object.entries(settings)) field.value = asset.options[key];
     for (const [key, { select, loop }] of stateInputs) {
-      const detected = asset.clips[Number(clipKey(asset.detected, key))];
-      fill(select, asset, asset.mapping[key] ?? '', detected ? 'Otomatis · ' + detected.name : 'Otomatis · Belum cocok');
-      select.add(new Option('Tanpa klip khusus', 'off'), 1);
+      const detected = animationClip({ clips: asset.clips, detected: asset.detected }, key);
+      const disabled = asset.mapping[key] === 'off';
+      const automatic = detected ? 'Otomatis · ' + detected.name : disabled ? 'Otomatis' : 'No Animation';
+      fill(select, asset, asset.mapping[key] ?? '', automatic);
+      if (detected || disabled) select.add(new Option('No Animation', 'off'), 1);
       select.value = asset.mapping[key] ?? '';
       loop.checked = key === 'fall' || (key !== 'death' && (asset.loops[key] ?? loopsByDefault(key)));
     }
@@ -577,16 +591,19 @@ export function mountCharacterPanel(world, signal, preset) {
       if (!asset.packageId) throw Error('Ekspor karakter aktif lewat Save as Character dan upload paketnya sebelum menyimpan pengaturan.');
       return { package: asset.packageId, options: asset.options, mapping: asset.mapping, loops: asset.loops, rootMotion: asset.rootMotion };
     },
+    hasAnimation(slot) {
+      const asset = library.get(current);
+      return !asset.scene || Boolean(animationClip(asset, slot));
+    },
     attackMotion(slot) {
       const asset = library.get(current);
-      const key = clipKey(resolveMapping(asset), slot);
-      if (!key || !runtime) return null;
-      return runtime.attackMotion(asset, asset.clips[Number(key)]);
+      const clip = animationClip(asset, slot);
+      return clip && runtime ? runtime.attackMotion(asset, clip) : null;
     },
     duration(slot) {
       const asset = library.get(current);
-      const key = clipKey(resolveMapping(asset), slot);
-      return key ? asset.clips[Number(key)]?.duration / asset.options.speed : undefined;
+      const clip = animationClip(asset, slot);
+      return clip ? clip.duration / asset.options.speed : undefined;
     },
     height() {
       const { options } = library.get(current);

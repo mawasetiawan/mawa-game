@@ -51,7 +51,7 @@ export function touchesAttack(origin, target, attack) {
   return Math.hypot(target.x - x, target.z - z, capsuleY - y) <= bodyRadius + strikeRadius;
 }
 
-export function createCombat(actor, settings, fallbackSpawn, animationDuration, onShake, onControlReset, identity = 'local', shakeEnabled, attackMotion, onAttack, sharedActions = () => settings.actions) {
+export function createCombat(actor, settings, fallbackSpawn, animationDuration, onShake, onControlReset, identity = 'local', shakeEnabled, attackMotion, onAttack, sharedActions = () => settings.actions, canAnimate = () => true) {
   let clock = 0, serial = 0, swing, combo, respawnAt = 0;
   let stunUntil = 0, slowUntil = 0, graceUntil = 0, impactUntil = 0;
   const connections = new Map();
@@ -81,12 +81,13 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
   function press(id) {
     if (swing || !Object.hasOwn(settings.actions, id) || actor.hp === 0 || clock < stunUntil) return false;
     const stage = combo?.id === id && clock <= combo.until && combo.stage < settings.actions[id].count ? combo.stage + 1 : 1;
+    if (!canAnimate(attackSlot(id, stage))) return false;
     start(id, stage);
     return true;
   }
 
   function interact() {
-    if (actor.hp === 0 || clock < stunUntil || swing) return false;
+    if (actor.hp === 0 || clock < stunUntil || swing || !canAnimate('interact')) return false;
     combo = null;
     actor.action = 'interact';
     actor.actionSerial = ++serial;

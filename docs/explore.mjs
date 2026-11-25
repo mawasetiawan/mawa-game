@@ -1,10 +1,10 @@
 import { mountPcControls } from './pc-controls.mjs';
 import { createAttackAudio } from './combat-audio.mjs';
-import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=7';
+import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=8';
 import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs?v=2';
 import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=3';
 import { createCameraRig } from './camera-rig.mjs?v=pc';
-import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=3';
+import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=4';
 
 export async function mountExploration(world, signal, replication, settings, getCamera = () => null, characterEditor, combatPanel, playerName = () => '') {
   const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js');
@@ -58,15 +58,16 @@ export async function mountExploration(world, signal, replication, settings, get
 
   const playerId = replication.uid ?? 'local';
   const playSound = createAttackAudio(signal);
+  const canAnimate = slot => characterEditor?.hasAnimation(slot) ?? true;
   const combat = createCombat(actor, combatConfig, defaultSpawn, slot => characterEditor?.duration(slot),
     () => triggerCameraCue(world, 'shake'), resetControls, playerId,
     kind => combatConfig.actions[kind]?.shake,
     slot => characterEditor?.attackMotion(slot),
     kind => playSound(combatPanel?.audio?.[kind]),
-    () => (replication.preview ? combatConfig : combatPanel?.shared ?? combatConfig).actions);
+    () => (replication.preview ? combatConfig : combatPanel?.shared ?? combatConfig).actions, canAnimate);
   const editing = () => world.hasAttribute('data-edit-hud') || world.hasAttribute('data-edit-spawn');
   const control = mountCombatHud(world, actions, signal, {
-    press(id) { if (!editing()) { previewFighting = true; combat.press(id); } },
+    press(id) { if (!editing() && combat.press(id)) previewFighting = true; },
     blocked: combat.blocked, respawnLeft: combat.respawnLeft,
   });
   const health = createHealthBars(THREE, world, canvas, camera, signal);
@@ -121,8 +122,7 @@ export async function mountExploration(world, signal, replication, settings, get
     if (!action || held.has(action)) return;
     held.add(action);
     if (attackIds.includes(action)) {
-      previewFighting = true;
-      combat.press(action);
+      if (combat.press(action)) previewFighting = true;
     } else if (action === 'jump') requestJump();
     else if (action === 'crouch') input.crouch = true;
     else if (action === 'walk') toggleWalk();
@@ -155,7 +155,7 @@ export async function mountExploration(world, signal, replication, settings, get
   world.addEventListener('focusin', event => {
     if (event.target.matches('input, textarea, [contenteditable]')) resetControls();
   }, options);
-  const requestJump = () => { if (!editing() && !combat.blocked()) jumpUntil = performance.now() + 140; };
+  const requestJump = () => { if (!editing() && !combat.blocked() && canAnimate('jump')) jumpUntil = performance.now() + 140; };
   const hasMoveInput = () => pointer !== null || (pc.desktop() ?
     ['forward', 'left', 'back', 'right'] : ['KeyW', 'KeyA', 'KeyS', 'KeyD']).some(key => held.has(key));
   window.addEventListener('keydown', event => {
@@ -242,7 +242,7 @@ export async function mountExploration(world, signal, replication, settings, get
     if (event.detail === 0 && !event.pointerType) requestJump();
   }, options);
   function toggleWalk() {
-    if (combat.blocked() || editing()) return;
+    if (combat.blocked() || editing() || (!input.walk && !canAnimate('walk'))) return;
     input.walk = !input.walk;
     walk.setAttribute('aria-pressed', String(input.walk));
   }
@@ -303,7 +303,7 @@ export async function mountExploration(world, signal, replication, settings, get
     input.sprint = sprintPointer !== null || held.has('sprint') || held.has('ShiftLeft') || held.has('ShiftRight');
     input.jump = jumpUntil >= now && actor.state === ActorState.GROUNDED && actor.dashLeft === 0 && !input.dash;
     if (input.jump) jumpUntil = 0;
-    if (actor.hp > 0) stepMovement(actor, combat.movement(input), dt * combat.timeScale(), settings);
+    if (actor.hp > 0) stepMovement(actor, combat.movement(input), dt * combat.timeScale(), settings, canAnimate);
     input.jump = input.crouch = input.dash = false;
     actor.x = THREE.MathUtils.clamp(actor.x, -49, 49);
     actor.z = THREE.MathUtils.clamp(actor.z, -49, 49);
