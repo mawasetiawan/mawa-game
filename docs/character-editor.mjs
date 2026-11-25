@@ -1,5 +1,5 @@
 import { characterRepository, rawCharacterRoot, packageName, squareThumbnail, validThumbnail, fetchCharacterCard } from './character-gallery.mjs';
-import { createInPlaceLock, horizontalRootMotion, rootDelta, rootMotionOptions } from './root-motion.mjs?v=3';
+import { createInPlaceLock, horizontalRootMotion, rootDelta, rootMotionOptions } from './root-motion.mjs?v=4';
 import { packCharacter, resampleCharacter, unpackCharacter } from './character-package.mjs';
 import { attackSlot, combatActions, comboLimit, detectAnimations, loopsByDefault } from './animation-slots.mjs';
 

@@ -6,8 +6,10 @@ export function createInPlaceLock(THREE, fit, scene) {
   const hips = new Set();
   const meshes = [];
   const rest = new Map();
-  function addChain(node) {
-    for (; node && node !== scene; node = node.parent) carriers.add(node);
+  function addChain(node, throughHip = false) {
+    for (; node && node !== scene; node = node.parent) {
+      if (throughHip || !node.isBone || !node.parent?.isBone) carriers.add(node);
+    }
   }
   fit.updateWorldMatrix(true, true);
   const fromWorld = fit.matrixWorld.clone().invert();
@@ -16,8 +18,8 @@ export function createInPlaceLock(THREE, fit, scene) {
     if (node.isBone && hipsName.test(node.name)) hips.add(node);
     if (node.isSkinnedMesh && node.skeleton) {
       addChain(node);
-      const bones = new Set(node.skeleton.bones);
-      for (const bone of bones) if (!bones.has(bone.parent)) addChain(bone);
+      // FBX can put animation bones and skinning bones on alternating levels.
+      for (const bone of node.skeleton.bones) if (!bone.parent?.isBone) addChain(bone);
     }
     rest.set(node, { position: node.position.clone(), rotation: node.quaternion.clone(), scale: node.scale.clone() });
   });
@@ -29,7 +31,7 @@ export function createInPlaceLock(THREE, fit, scene) {
       return false;
     })) { addChain(node); break; }
   }
-  for (const hip of hips) addChain(hip);
+  for (const hip of hips) addChain(hip, true);
 
   const bodyMotion = [...hips].map(node => {
     const basis = new THREE.Matrix3().setFromMatrix4(fromWorld.clone().multiply(node.parent.matrixWorld));
