@@ -1,8 +1,9 @@
+import { mountPcControls } from './pc-controls.mjs';
 import { createAttackAudio } from './combat-audio.mjs';
 import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=7';
 import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs?v=2';
 import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=3';
-import { createCameraRig } from './camera-rig.mjs';
+import { createCameraRig } from './camera-rig.mjs?v=pc';
 import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=3';
 
 export async function mountExploration(world, signal, replication, settings, getCamera = () => null, characterEditor, combatPanel, playerName = () => '') {
@@ -46,7 +47,6 @@ export async function mountExploration(world, signal, replication, settings, get
   Object.assign(actor, combatConfig.spawn ?? {});
   const tickCues = createCameraCues(world, signal);
   const shakeOffset = new THREE.Vector3();
-  const cameraRig = createCameraRig(THREE, canvas, camera, actor, settings, getCamera, signal);
   const held = new Set();
   const handled = new Set(['KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','KeyC','Space','KeyE','KeyF','KeyX','Digit1','Digit2','Digit3','Digit4']);
   const input = {x:0,z:0,walk:false,sprint:false,jump:false,crouch:false,dash:false};
@@ -109,16 +109,67 @@ export async function mountExploration(world, signal, replication, settings, get
   }
 
   const options = { signal };
+  const pc = mountPcControls(world, signal, resetControls);
+  const cameraRig = createCameraRig(THREE, canvas, camera, actor, settings, getCamera, signal, {
+    desktop: pc.desktop,
+    button: pc.cameraButton,
+    held: () => held.has('camera'),
+    blocked: () => pc.open() || editing(),
+  });
+  const attackIds = ['basic', 'skill1', 'skill2', 'ultimate'];
+  function dispatchPc(action) {
+    if (!action || held.has(action)) return;
+    held.add(action);
+    if (attackIds.includes(action)) {
+      previewFighting = true;
+      combat.press(action);
+    } else if (action === 'jump') requestJump();
+    else if (action === 'crouch') input.crouch = true;
+    else if (action === 'walk') toggleWalk();
+    else if (action === 'interact') interact();
+    else if (action === 'sprint') sprintTap();
+  }
+  function sprintTap() {
+    const now = performance.now();
+    if (now - lastShift <= 280) {
+      input.dash = true;
+      lastShift = -Infinity;
+    } else lastShift = now;
+  }
+  const gameplayBlocked = () => editing() || combat.blocked() || pc.open();
+  canvas.addEventListener('pointerdown', event => {
+    if (!pc.desktop() || event.pointerType !== 'mouse' || gameplayBlocked() || event.ctrlKey || event.metaKey) return;
+    const action = pc.action('Mouse' + event.button);
+    if (!action || action === 'camera') return;
+    event.preventDefault();
+    dispatchPc(action);
+  }, options);
+  canvas.addEventListener('contextmenu', event => {
+    if (pc.desktop() && pc.action('Mouse2')) event.preventDefault();
+  }, options);
+  window.addEventListener('pointerup', event => held.delete(pc.action('Mouse' + event.button)), options);
+  window.addEventListener('pointercancel', event => {
+    if (event.pointerType === 'mouse') resetControls();
+  }, options);
   window.addEventListener('blur', resetControls, options);
   world.addEventListener('focusin', event => {
     if (event.target.matches('input, textarea, [contenteditable]')) resetControls();
   }, options);
   const requestJump = () => { if (!editing() && !combat.blocked()) jumpUntil = performance.now() + 140; };
-  const hasMoveInput = () => pointer !== null || ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(key => held.has(key));
+  const hasMoveInput = () => pointer !== null || (pc.desktop() ?
+    ['forward', 'left', 'back', 'right'] : ['KeyW', 'KeyA', 'KeyS', 'KeyD']).some(key => held.has(key));
   window.addEventListener('keydown', event => {
-    if (editing() || combat.blocked() || !handled.has(event.code) || event.altKey || event.ctrlKey || event.metaKey ||
-      event.target.matches?.('input, textarea, [contenteditable]') ||
-      (event.code === 'Space' && event.target.closest?.('button') && !hasMoveInput())) return;
+    if (gameplayBlocked() || event.altKey || event.metaKey ||
+      event.target.closest?.('input, textarea, select, [contenteditable], dialog, .developer-panel') ||
+      ((event.code === 'Space' || event.code === 'Enter') && event.target.closest?.('button') && !hasMoveInput())) return;
+    if (pc.desktop()) {
+      const action = pc.action(event.code);
+      if (!action || (event.ctrlKey && !event.code.startsWith('Control'))) return;
+      event.preventDefault();
+      if (!event.repeat) dispatchPc(action);
+      return;
+    }
+    if (!handled.has(event.code) || event.ctrlKey) return;
     event.preventDefault();
     if (event.repeat || held.has(event.code)) return;
     if (event.code === 'KeyX') control.toggle();
@@ -126,17 +177,16 @@ export async function mountExploration(world, signal, replication, settings, get
     const wasSprinting = held.has('ShiftLeft') || held.has('ShiftRight');
     held.add(event.code);
     if ((event.code === 'ShiftLeft' || event.code === 'ShiftRight') && !wasSprinting) {
-      const now = performance.now();
-      if (now - lastShift <= 280) {
-        input.dash = true;
-        lastShift = -Infinity;
-      } else lastShift = now;
+      sprintTap();
     }
     if (event.code === 'KeyC') input.crouch = true;
     if (event.code === 'Space') requestJump();
     if (event.code === 'KeyE' || event.code === 'KeyF') interact();
   }, options);
-  window.addEventListener('keyup', event => held.delete(event.code), options);
+  window.addEventListener('keyup', event => {
+    held.delete(event.code);
+    held.delete(pc.action(event.code));
+  }, options);
 
   world.addEventListener('mawa:hud-edit', resetControls, { signal });
   world.addEventListener('mawa:spawn-editing', resetControls, { signal });
@@ -243,13 +293,14 @@ export async function mountExploration(world, signal, replication, settings, get
     }
     combat.tick(dt, now, replication.players);
     control.update();
-    const localX = Number(held.has('KeyD')) - Number(held.has('KeyA')) + stickX;
-    const localZ = Number(held.has('KeyS')) - Number(held.has('KeyW')) + stickZ;
+    const pressed = (action, touchKey) => Number(held.has(pc.desktop() ? action : touchKey));
+    const localX = pressed('right', 'KeyD') - pressed('left', 'KeyA') + stickX;
+    const localZ = pressed('back', 'KeyS') - pressed('forward', 'KeyW') + stickZ;
     const yaw = cameraRig.heading();
     const sin = Math.sin(yaw), cos = Math.cos(yaw);
     input.x = localX * cos + localZ * sin;
     input.z = localZ * cos - localX * sin;
-    input.sprint = sprintPointer !== null || held.has('ShiftLeft') || held.has('ShiftRight');
+    input.sprint = sprintPointer !== null || held.has('sprint') || held.has('ShiftLeft') || held.has('ShiftRight');
     input.jump = jumpUntil >= now && actor.state === ActorState.GROUNDED && actor.dashLeft === 0 && !input.dash;
     if (input.jump) jumpUntil = 0;
     if (actor.hp > 0) stepMovement(actor, combat.movement(input), dt * combat.timeScale(), settings);

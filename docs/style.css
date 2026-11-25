@@ -383,3 +383,14 @@ html.immersive-game,html.immersive-game body{background:#48677d}
 .map-join-panel strong{overflow-wrap:anywhere;font-size:13px}
 .map-join-panel button{font-size:12px;padding:5px 8px;min-height:30px}
 #joinPending{margin-top:8px}
+
+.world[data-pc-controls] .controls,.pc-info[hidden]{display:none}
+.gameplay-hud .world-toolbar .pc-info-icon{display:inline-grid;place-items:center;width:18px;height:18px;border:1px solid currentColor;border-radius:50%;font:700 .75rem system-ui}
+.pc-control-dialog{position:fixed;margin:auto 1rem auto auto;inset:0;border:1px solid #7a9aa8;border-radius:14px;background:#152333;color:#eaf3fc;padding:1rem;width:min(29rem,calc(100vw - 2rem));max-height:85%;overflow:auto}
+.pc-control-dialog::backdrop{background:#07101bb0}
+.pc-control-dialog h2{margin:0}
+.pc-control-dialog p{margin:.55rem 0;font-size:.85rem;color:#cae0ee}
+.pc-control-rows{display:grid;gap:.2rem}
+.pc-control-rows>div{display:flex;align-items:center;justify-content:space-between;gap:1rem;font-size:.88rem}
+.pc-control-rows button{min-width:6rem}
+.pc-control-footer{display:flex;justify-content:space-between;gap:.4rem;margin-top:.7rem}

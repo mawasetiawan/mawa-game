@@ -1,12 +1,12 @@
 import { createCameraEffects } from './camera-effects.mjs';
 import { decodeCameraScript, sampleCameraScript } from './scripted-camera.mjs';
-import { bindOrbit } from './orbit.mjs?v=3';
+import { bindOrbit } from './orbit.mjs?v=4';
 import { resolveFov } from './game-settings.mjs?v=4';
 
 const rad = Math.PI / 180;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-export function createCameraRig(THREE, canvas, camera, actor, settings, getCamera, signal) {
+export function createCameraRig(THREE, canvas, camera, actor, settings, getCamera, signal, desktopControls) {
   const { orbit, clampDistance } = bindOrbit(canvas, settings, signal, {
     drag(dx, dy) {
       if (config.mode === 'follow') return false;
@@ -49,7 +49,7 @@ export function createCameraRig(THREE, canvas, camera, actor, settings, getCamer
       }
       return true;
     },
-  });
+  }, desktopControls);
   const anchor = new THREE.Vector3();
   const position = new THREE.Vector3();
   const lookAt = new THREE.Vector3();

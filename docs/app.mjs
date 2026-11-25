@@ -363,7 +363,7 @@ async function start() {
       latest: async () => (await get(ref(db, 'developerConfigPublication/id'))).val(),
     } : undefined);
     mountDeveloperTabs(ui.world, exploration.signal);
-    import('./explore.mjs?v=17').then(({ mountExploration }) => {
+    import('./explore.mjs?v=18').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
       const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
       return mountExploration(ui.world, exploration.signal, replication, settings, getCamera, characterEditor, combat,
