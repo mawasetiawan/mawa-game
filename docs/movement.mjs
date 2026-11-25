@@ -23,6 +23,17 @@ export function createMovement() {
   };
 }
 
+export function availableLocomotion(canAnimate) {
+  const walk = canAnimate(Gait.WALK);
+  const run = canAnimate(Gait.RUN);
+  const sprint = canAnimate(Gait.SPRINT);
+  return {
+    defaultGait: run ? Gait.RUN : walk ? Gait.WALK : sprint ? Gait.SPRINT : Gait.STOP,
+    walkToggle: walk && run,
+    sprintHold: sprint && (run || walk),
+  };
+}
+
 export function stepMovement(actor, input, dt, settings = defaults, canAnimate = () => true) {
   const magnitude = Math.hypot(input.x, input.z);
   const moving = magnitude > 0.08;
@@ -60,10 +71,11 @@ export function stepMovement(actor, input, dt, settings = defaults, canAnimate =
     actor.dashLeft = Math.max(0, actor.dashLeft - time);
     remaining -= time;
   }
+  const available = availableLocomotion(canAnimate);
   const locomotion = actor.stance === Stance.CROUCH ? Gait.WALK :
-    input.sprint && canAnimate(Gait.SPRINT) ? Gait.SPRINT :
-      input.walk && canAnimate(Gait.WALK) ? Gait.WALK : Gait.RUN;
-  const canMove = moving && canAnimate(actor.stance === Stance.CROUCH ? 'crouchMove' : locomotion);
+    input.sprint && available.sprintHold ? Gait.SPRINT :
+      input.walk && available.walkToggle ? Gait.WALK : available.defaultGait;
+  const canMove = moving && (actor.stance === Stance.CROUCH ? canAnimate('crouchMove') : locomotion !== Gait.STOP);
   if (canMove && remaining > 0) {
     const speed = locomotion === Gait.WALK ? settings.walkSpeed : locomotion === Gait.SPRINT ? settings.sprintSpeed : settings.runSpeed;
     actor.x += x * speed * strength * remaining;

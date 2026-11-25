@@ -2,10 +2,10 @@ import { isWorldTextOrMenu, preventWorldDoubleTap } from './world-input.mjs';
 import { mountPcControls } from './pc-controls.mjs';
 import { createAttackAudio } from './combat-audio.mjs';
 import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=9';
-import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs?v=2';
+import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs?v=3';
 import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=3';
 import { createCameraRig } from './camera-rig.mjs?v=pc';
-import { createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=4';
+import { availableLocomotion, createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=5';
 
 export async function mountExploration(world, signal, replication, settings, getCamera = () => null, characterEditor, combatPanel, playerName = () => '') {
   const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js');
@@ -60,6 +60,7 @@ export async function mountExploration(world, signal, replication, settings, get
   const playerId = replication.uid ?? 'local';
   const playSound = createAttackAudio(signal);
   const canAnimate = slot => characterEditor?.hasAnimation(slot) ?? true;
+  const locomotion = () => availableLocomotion(canAnimate);
   const combat = createCombat(actor, combatConfig, defaultSpawn, slot => characterEditor?.duration(slot),
     () => triggerCameraCue(world, 'shake'), resetControls, playerId,
     kind => combatConfig.actions[kind]?.shake,
@@ -70,7 +71,7 @@ export async function mountExploration(world, signal, replication, settings, get
   const editing = () => world.hasAttribute('data-edit-hud') || world.hasAttribute('data-edit-spawn');
   const control = mountCombatHud(world, actions, signal, {
     press(id) { if (!editing() && combat.press(id)) previewFighting = true; },
-    blocked: combat.blocked, respawnLeft: combat.respawnLeft,
+    blocked: combat.blocked, respawnLeft: combat.respawnLeft, locomotion,
   });
   const health = createHealthBars(THREE, world, canvas, camera, signal);
   mountSpawnGizmo(THREE, world, canvas, scene, camera, combatPanel?.draft ?? combatConfig, actor, signal);
@@ -133,6 +134,7 @@ export async function mountExploration(world, signal, replication, settings, get
     else if (action === 'sprint') sprintTap();
   }
   function sprintTap() {
+    if (!canAnimate('dash')) return;
     const now = performance.now();
     if (now - lastShift <= 280) {
       input.dash = true;
@@ -244,13 +246,13 @@ export async function mountExploration(world, signal, replication, settings, get
     if (event.detail === 0 && !event.pointerType) requestJump();
   }, options);
   function toggleWalk() {
-    if (combat.blocked() || editing() || (!input.walk && !canAnimate('walk'))) return;
+    if (combat.blocked() || editing() || !locomotion().walkToggle) return;
     input.walk = !input.walk;
     walk.setAttribute('aria-pressed', String(input.walk));
   }
   walk.addEventListener('click', toggleWalk, options);
   sprint.addEventListener('pointerdown', event => {
-    if (combat.blocked() || editing() || sprintPointer !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    if (combat.blocked() || editing() || !locomotion().sprintHold || sprintPointer !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
     sprintPointer = event.pointerId;
     sprint.setPointerCapture(sprintPointer);
   }, options);
@@ -294,6 +296,12 @@ export async function mountExploration(world, signal, replication, settings, get
       replication.players.set('training', dummy);
     }
     combat.tick(dt, now, replication.players);
+    const movementModes = locomotion();
+    if (!movementModes.walkToggle && input.walk) {
+      input.walk = false;
+      walk.setAttribute('aria-pressed', 'false');
+    }
+    if (!movementModes.sprintHold) sprintPointer = null;
     control.update();
     const pressed = (action, touchKey) => Number(held.has(pc.desktop() ? action : touchKey));
     const localX = pressed('right', 'KeyD') - pressed('left', 'KeyA') + stickX;

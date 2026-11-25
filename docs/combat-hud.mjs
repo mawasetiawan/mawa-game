@@ -12,6 +12,16 @@ export function mountCombatHud(world, actions, signal, control) {
     return button;
   });
   let enabled = false, lastDisabled;
+  function updateExplorationButtons() {
+    const locomotion = control.locomotion?.();
+    for (const node of original) {
+      const action = node.dataset.action;
+      const unavailable = action === 'walk' ? locomotion?.walkToggle === false :
+        action === 'sprint' && locomotion?.sprintHold === false;
+      const hidden = enabled || unavailable;
+      if (node.hidden !== hidden) node.hidden = hidden;
+    }
+  }
   function show(value) {
     enabled = value;
     toggle.textContent = enabled ? 'Combat' : 'Eksplorasi';
@@ -19,7 +29,7 @@ export function mountCombatHud(world, actions, signal, control) {
     actions.dataset.mode = enabled ? 'combat' : 'exploration';
     actions.setAttribute('aria-label', enabled ? 'Aksi combat' : 'Aksi eksplorasi');
     toggle.setAttribute('aria-label', enabled ? 'Combat aktif. Ganti ke Eksplorasi (X).' : 'Aktifkan Combat (X)');
-    for (const node of original) node.hidden = enabled;
+    updateExplorationButtons();
     for (const node of buttons) node.hidden = !enabled;
   }
   const modeColumn = document.createElement('div');
@@ -43,6 +53,7 @@ export function mountCombatHud(world, actions, signal, control) {
     toggle: () => show(!enabled),
     press: index => { if (enabled) buttons[index]?.click(); },
     update() {
+      updateExplorationButtons();
       const left = Math.ceil(control.respawnLeft());
       respawn.hidden = left === 0;
       if (left && respawn.value !== 'Respawn dalam ' + left + ' dtk') respawn.value = 'Respawn dalam ' + left + ' dtk';

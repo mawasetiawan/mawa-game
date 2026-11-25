@@ -21,7 +21,8 @@ function clipKey(mapping, slot) {
 }
 
 function animationClip(asset, slot) {
-  const clip = asset.clips?.[Number(clipKey(resolveMapping(asset), slot))];
+  const key = asset.mapping?.[slot] ?? asset.detected?.[slot];
+  const clip = /^\d+$/.test(key ?? '') ? asset.clips?.[Number(key)] : undefined;
   return clip?.tracks?.length && Number.isFinite(clip.duration) && clip.duration > 0 ? clip : undefined;
 }
 const mib = 1024 * 1024;
