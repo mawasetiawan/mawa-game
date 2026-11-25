@@ -151,8 +151,9 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   const playerCount = picker.querySelector('#actorCount');
   const playerRefresh = picker.querySelector('[data-refresh-actors]');
   const section = document.createElement('details');
+  section.open = true;
   const title = document.createElement('summary');
-  title.textContent = 'Edit Karakter';
+  title.textContent = 'Karakter';
   const gallery = document.createElement('div');
   const count = Object.assign(document.createElement('h3'), { textContent: 'Karakter GitHub' });
   const cards = Object.assign(document.createElement('ul'), { className: 'character-cards' });
@@ -166,7 +167,12 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   });
   const refresh = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Muat Ulang Daftar' });
   savedActions.append(refresh, upload);
-  gallery.append(count, savedActions, cards, locals, galleryStatus);
+  gallery.append(count, savedActions);
+  if (!publication) gallery.append(Object.assign(document.createElement('p'), {
+    className: 'character-gallery-hint',
+    textContent: 'Masuk dengan akun Google Game Master untuk menghapus paket dari GitHub.',
+  }));
+  gallery.append(galleryStatus, cards, locals);
   section.append(title, gallery);
   const saved = new Map();
   const published = new Map();
@@ -252,14 +258,17 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     if (!online) pick.append(Object.assign(document.createElement('small'), { textContent: 'Lokal' }));
     pick.addEventListener('click', () => void loadSaved(id, preset?.package === id ? preset : undefined), { signal });
     row.append(pick);
-    if (online && publication) {
+    if (online) {
+      const isDefault = preset?.package === id;
       const remove = Object.assign(document.createElement('button'), {
-        type: 'button', textContent: 'Hapus', disabled: deletePending || preset?.package === id,
+        type: 'button', className: 'character-card-delete', textContent: 'Hapus dari GitHub',
+        disabled: !publication || deletePending || isDefault,
       });
       remove.setAttribute('aria-label', 'Hapus ' + name + ' dari GitHub');
-      if (preset?.package === id) remove.title = 'Paket ini masih menjadi karakter default.';
+      if (isDefault) pick.append(Object.assign(document.createElement('small'), { textContent: 'Default' }));
+      if (isDefault) remove.title = 'Paket ini masih menjadi karakter default.';
       remove.addEventListener('click', async () => {
-        if (deletePending || !window.confirm('Hapus paket ' + name + ' dari GitHub?')) return;
+        if (!publication || isDefault || deletePending || !window.confirm('Hapus paket ' + name + ' dari GitHub untuk semua pemain?')) return;
         deletePending = true;
         galleryStatus.textContent = 'Mengirim permintaan hapus…';
         renderCards();
@@ -326,7 +335,6 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   editTitle.textContent = 'Edit Karakter';
   edit.append(editTitle);
   section.append(edit);
-  title.textContent = 'Karakter';
   const status = document.createElement('p');
   status.setAttribute('role', 'status');
   const model = document.createElement('select');
@@ -361,16 +369,17 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   const meshFile = fileInput(), clipsFile = fileInput();
   const importMesh = button('Impor Mesh .glb', () => meshFile.click());
   const importClips = button('Impor Animasi .glb', () => clipsFile.click());
-  const remove = button('Hapus dari sesi', () => {
+  const remove = button('Lepas dari editor', () => {
     const asset = library.get(current);
     if (!asset.scene) return;
     library.delete(current);
     model.querySelector('option:checked')?.remove();
     current = model.value = 'capsule';
-    usingPlayer = false;
     render();
     disposeModel(asset.scene);
+    status.textContent = 'Karakter dilepas dari editor sesi ini. Paket GitHub tetap tersedia.';
   });
+  remove.title = 'Keluarkan karakter dari editor di sesi ini.';
   edit.append(collection, controls);
   const sizeWarning = document.createElement('p');
   sizeWarning.className = 'character-size-warning';
@@ -560,7 +569,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
       }
     }
     if (library.size >= 6) {
-      galleryStatus.textContent = 'Hapus karakter yang tidak dipakai dari sesi sebelum memuat paket lain.';
+      galleryStatus.textContent = 'Lepas karakter yang tidak dipakai dari editor sebelum memuat paket lain.';
       return;
     }
     pending = true;

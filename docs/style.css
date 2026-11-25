@@ -401,6 +401,12 @@ html.immersive-game,html.immersive-game body{background:#48677d}
 .character-card-pick span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .character-card-thumb{width:2.6rem;height:2.6rem;flex:0 0 2.6rem;display:grid;place-items:center;object-fit:cover;border-radius:.45rem;background:#26384b}
 .character-card-pick small{opacity:.8;margin-left:auto}
+.character-gallery-hint{margin:.45rem 0;color:#b8d3be;font-size:.75rem}
+.gameplay-hud .character-cards .character-card-delete{
+  flex:0 0 auto;max-width:5.5rem;min-height:36px;padding:.25rem .45rem;
+  font-size:.68rem;line-height:1.15;text-align:center;color:#ffd0c9;border-color:#d17e7466
+}
+.gameplay-hud .character-cards .character-card-delete:disabled{opacity:.58}
 .actor-picker{
   pointer-events:auto;box-sizing:border-box;width:min(420px,calc(100% - 32px));
   max-height:min(540px,calc(100dvh - max(16px,env(safe-area-inset-top)) - max(16px,env(safe-area-inset-bottom))));
