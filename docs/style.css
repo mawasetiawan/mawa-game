@@ -401,3 +401,23 @@ html.immersive-game,html.immersive-game body{background:#48677d}
 .character-card-pick span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .character-card-thumb{width:2.6rem;height:2.6rem;flex:0 0 2.6rem;display:grid;place-items:center;object-fit:cover;border-radius:.45rem;background:#26384b}
 .character-card-pick small{opacity:.8;margin-left:auto}
+.actor-picker{
+  pointer-events:auto;box-sizing:border-box;width:min(420px,calc(100% - 32px));
+  max-height:min(540px,calc(100dvh - max(16px,env(safe-area-inset-top)) - max(16px,env(safe-area-inset-bottom))));
+  padding:14px;color:#f3f6ec;background:#172a32ed;border:1px solid #b9d6c651;
+  border-radius:18px;box-shadow:0 18px 48px #071518a6;backdrop-filter:blur(16px);
+  overflow:auto;overscroll-behavior:contain;touch-action:pan-y
+}
+.actor-picker[open]{display:flex;flex-direction:column;gap:10px}
+.actor-picker::backdrop{background:#0a171b66}
+.actor-picker header,.actor-picker footer{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.actor-picker h2,.actor-picker p{margin:0}
+.actor-picker p{color:#c0d7cb;font-size:.8rem}
+.actor-picker .character-cards{max-height:none;min-height:0;flex:1 1 auto;margin:0;overscroll-behavior:contain;touch-action:pan-y}
+.actor-picker .character-card-pick{min-height:48px}
+.actor-picker footer button{flex:none}
+@media(max-width:665px){
+  .gameplay-hud .world-toolbar #switchActor{gap:4px;white-space:nowrap}
+  .gameplay-hud .world-toolbar #switchActor span{display:inline;font-size:10px}
+  .gameplay-hud .world-toolbar #switchActor svg{width:15px;height:15px}
+}

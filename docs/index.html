@@ -8,14 +8,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#101e26">
-<link rel="stylesheet" href="./style.css?v=release33">
+<link rel="stylesheet" href="./style.css?v=release34">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./mawa-icon-192.png">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}</script>
 </head>
 <body>
 <main>
-  <header><a class="brand" href="./">MAWA GAME</a><div id="account" class="account" hidden></div><button id="logout" hidden>Keluar</button><button id="installGame" type="button" hidden>Main di Layar Utama</button><small class="game-version" aria-label="Versi game">v26.11.25-33</small></header>
+  <header><a class="brand" href="./">MAWA GAME</a><div id="account" class="account" hidden></div><button id="logout" hidden>Keluar</button><button id="installGame" type="button" hidden>Main di Layar Utama</button><small class="game-version" aria-label="Versi game">v26.11.25-34</small></header>
   <section id="gate" class="center panel">
     <h1>Masuk ke Mawa Game</h1>
     <button id="login" type="button" aria-haspopup="dialog" aria-controls="loginChoice" disabled>Masuk dengan Google</button>
@@ -69,9 +69,10 @@
     <!-- HUD icons adapted from Tabler Icons (MIT). Copyright (c) 2020 Paweł Kuna. https://github.com/tabler/tabler-icons/blob/main/LICENSE -->
     <div class="gameplay-hud">
     <div class="hud-top">
-      <div class="hud-tag"><small>EKSPLORASI · <span class="game-version" aria-label="Versi game">v26.11.25-33</span></small><h2 id="mapTitle">Map Kosong</h2></div>
+      <div class="hud-tag"><small>EKSPLORASI · <span class="game-version" aria-label="Versi game">v26.11.25-34</span></small><h2 id="mapTitle">Map Kosong</h2></div>
       <div class="hud-compass" aria-hidden="true">· &nbsp; N &nbsp; ·</div>
       <nav class="world-toolbar" aria-label="Kontrol HUD">
+        <button id="switchActor" type="button" aria-label="Switch Actor" aria-haspopup="dialog" aria-controls="actorPicker" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="7" r="3"/><path d="M2 19v-2a4 4 0 0 1 4-4h4m4-4h8l-3-3m3 3-3 3m3 5h-8l3-3m-3 3 3 3"/></svg><span>Switch Actor</span></button>
         <button id="back" type="button" aria-label="Keluar dari Map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg><span>Keluar dari Map</span></button>
         <button id="openDeveloper" type="button" aria-label="Developer" aria-controls="developerPanel" aria-expanded="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16M8 4v4m8 2v4m-6 2v4"/></svg><span>Developer</span></button>
         <button id="fullscreen" type="button" aria-label="Fullscreen" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5"/></svg><span>Fullscreen</span></button>
@@ -90,6 +91,14 @@
       <header><div><h2>Pengaturan Developer</h2><p>Game Master</p></div><button type="button" data-close-developer aria-label="Tutup pengaturan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
       <form><div class="developer-fields"></div><button class="save" type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h11l3 3v13H4V4h2m2 0v6h8V4m-8 16v-6h8v6"/></svg>Apply Setting</button><p role="status"></p></form>
     </section>
+    <dialog id="actorPicker" class="actor-picker" aria-labelledby="actorPickerTitle">
+      <header>
+        <div><h2 id="actorPickerTitle">Switch Actor</h2><p id="actorCount"></p></div>
+        <button type="button" data-close-actors aria-label="Tutup daftar karakter" autofocus>✕</button>
+      </header>
+      <ul class="character-cards" aria-label="Pilihan karakter"></ul>
+      <footer><p role="status"></p><button type="button" data-refresh-actors>Muat ulang</button></footer>
+    </dialog>
     <section id="chat" class="panel chat" aria-label="Chat Room">
 <ol id="messages" role="log" aria-label="Riwayat chat room" aria-relevant="additions"></ol>
 <button id="chatToggle" type="button" aria-expanded="false" aria-controls="composer messages" aria-label="Buka chat">
@@ -112,6 +121,6 @@
   </section>
   <p id="status" role="status"></p>
 </main>
-<script type="module" src="./app.mjs?v=release33"></script>
+<script type="module" src="./app.mjs?v=release34"></script>
 </body>
 </html>

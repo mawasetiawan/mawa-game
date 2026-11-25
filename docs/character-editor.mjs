@@ -144,6 +144,12 @@ function createCharacterView(THREE, scene) {
 }
 
 export function mountCharacterPanel(world, signal, preset, publication) {
+  const switchActor = world.querySelector('#switchActor');
+  const picker = world.querySelector('#actorPicker');
+  const playerCards = picker.querySelector('ul');
+  const playerStatus = picker.querySelector('[role=status]');
+  const playerCount = picker.querySelector('#actorCount');
+  const playerRefresh = picker.querySelector('[data-refresh-actors]');
   const section = document.createElement('details');
   const title = document.createElement('summary');
   title.textContent = 'Edit Karakter';
@@ -164,7 +170,8 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   section.append(title, gallery);
   const saved = new Map();
   const published = new Map();
-  let listEpoch = 0, deletePending = false;
+  let listEpoch = 0, deletePending = false, lastRefresh = 0;
+  let playerAsset, usingPlayer = false, playerLoading = false;
 
   function displayName(id) { return id.replace(/\.character\.json(?:\.gz)?$/, '').replaceAll('-', ' '); }
 
@@ -174,21 +181,74 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     const local = [...saved].filter(([id, entry]) => entry && !published.has(id));
     locals.hidden = !local.length;
     locals.replaceChildren(...local.map(([id, item]) => makeCard(id, item, false)));
+    if (picker.open) renderPlayerCards();
+  }
+
+  function makeCardButton(name, image) {
+    const thumbnail = Object.assign(document.createElement(validThumbnail(image) ? 'img' : 'span'), {
+      className: 'character-card-thumb',
+    });
+    if (thumbnail.tagName === 'IMG') { thumbnail.alt = ''; thumbnail.src = image; }
+    else { thumbnail.textContent = name.slice(0, 1).toUpperCase(); thumbnail.setAttribute('aria-hidden', 'true'); }
+    const pick = Object.assign(document.createElement('button'), {
+      type: 'button', className: 'character-card-pick',
+    });
+    pick.append(thumbnail, Object.assign(document.createElement('span'), { textContent: name }));
+    return pick;
+  }
+
+  function equippedAsset() {
+    return usingPlayer ? playerAsset ?? library.get('capsule') : library.get(current);
+  }
+
+  function renderPlayerCards() {
+    playerCount.textContent = published.size + ' karakter GitHub';
+    const active = equippedAsset().packageId;
+    const focused = playerCards.contains(document.activeElement) ? document.activeElement.dataset.actor : undefined;
+    const entries = [['', library.get('capsule')], ...published];
+    playerCards.replaceChildren(...entries.map(([id, item]) => {
+      const pick = makeCardButton(item.name || displayName(id), item.thumbnail);
+      pick.dataset.actor = id;
+      pick.disabled = pending || playerLoading || !runtime;
+      pick.setAttribute('aria-pressed', String(id ? active === id : !equippedAsset().scene));
+      const row = document.createElement('li');
+      row.append(pick);
+      return row;
+    }));
+    if (focused !== undefined) {
+      const button = [...playerCards.querySelectorAll('button')].find(item => item.dataset.actor === focused);
+      (button && !button.disabled ? button : picker.querySelector('[data-close-actors]')).focus({ preventScroll: true });
+    }
+  }
+
+  async function chooseActor(id) {
+    if (!runtime || pending || playerLoading || (id && !published.has(id))) return;
+    playerLoading = true;
+    playerStatus.textContent = 'Memuat karakter…';
+    renderPlayerCards();
+    try {
+      const next = id ? await buildAsset(id, await fetchPackage(id), preset?.package === id ? preset : undefined) : undefined;
+      if (!picker.open || signal.aborted) { disposeModel(next?.scene); return; }
+      const previous = playerAsset;
+      playerAsset = next;
+      usingPlayer = true;
+      disposeModel(previous?.scene);
+      picker.close();
+    } catch (error) {
+      if (!signal.aborted) playerStatus.textContent = error.message || 'Karakter gagal dimuat.';
+    } finally {
+      playerLoading = false;
+      if (picker.open && !signal.aborted) renderPlayerCards();
+    }
   }
 
   function makeCard(id, item, online) {
     const name = item.name || displayName(id);
-    const thumbnail = Object.assign(document.createElement(validThumbnail(item.thumbnail) ? 'img' : 'span'), {
-      className: 'character-card-thumb',
-    });
-    if (thumbnail.tagName === 'IMG') { thumbnail.alt = ''; thumbnail.src = item.thumbnail; }
-    else { thumbnail.textContent = name.slice(0, 1).toUpperCase(); thumbnail.setAttribute('aria-hidden', 'true'); }
     const row = document.createElement('li');
-    const pick = Object.assign(document.createElement('button'), {
-      type: 'button', className: 'character-card-pick', disabled: pending || !runtime,
-    });
+    const pick = makeCardButton(name, item.thumbnail);
+    pick.disabled = pending || !runtime;
+    pick.setAttribute('aria-label', 'Edit ' + name);
     pick.setAttribute('aria-pressed', String(library.get(current).packageId === id));
-    pick.append(thumbnail, Object.assign(document.createElement('span'), { textContent: name }));
     if (!online) pick.append(Object.assign(document.createElement('small'), { textContent: 'Lokal' }));
     pick.addEventListener('click', () => void loadSaved(id, preset?.package === id ? preset : undefined), { signal });
     row.append(pick);
@@ -229,8 +289,10 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   }
 
   async function refreshCards() {
+    if (refresh.disabled) return;
     const epoch = ++listEpoch;
-    refresh.disabled = true;
+    refresh.disabled = playerRefresh.disabled = true;
+    playerStatus.textContent = 'Memuat daftar karakter…';
     try {
       const response = await fetch('https://api.github.com/repos/mawasetiawan/mawa-game/contents/docs/characters', { signal, cache: 'no-cache' });
       if (!response.ok) throw Error('Daftar karakter GitHub belum bisa dimuat.');
@@ -250,9 +312,13 @@ export function mountCharacterPanel(world, signal, preset, publication) {
         }));
         if (!signal.aborted && epoch === listEpoch) renderCards();
       }
+      if (!signal.aborted) {
+        lastRefresh = Date.now();
+        if (!playerLoading) playerStatus.textContent = published.size ? '' : 'Belum ada karakter di GitHub.';
+      }
     } catch (error) {
-      if (!signal.aborted) galleryStatus.textContent = error.message;
-    } finally { if (!signal.aborted && epoch === listEpoch) refresh.disabled = false; }
+      if (!signal.aborted) galleryStatus.textContent = playerStatus.textContent = error.message;
+    } finally { if (!signal.aborted && epoch === listEpoch) refresh.disabled = playerRefresh.disabled = false; }
   }
 
   const edit = document.createElement('details');
@@ -301,6 +367,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     library.delete(current);
     model.querySelector('option:checked')?.remove();
     current = model.value = 'capsule';
+    usingPlayer = false;
     render();
     disposeModel(asset.scene);
   });
@@ -404,6 +471,31 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   }, { signal });
   controls.append(nameLabel, thumbnailLabel, thumbnailPreview);
   refresh.addEventListener('click', () => void refreshCards(), { signal });
+  playerRefresh.addEventListener('click', () => void refreshCards(), { signal });
+  switchActor.addEventListener('click', () => {
+    if (picker.open) return;
+    renderPlayerCards();
+    picker.showModal();
+    switchActor.setAttribute('aria-expanded', 'true');
+    if (Date.now() - lastRefresh > 60_000) void refreshCards();
+  }, { signal });
+  picker.querySelector('[data-close-actors]').addEventListener('click', () => picker.close(), { signal });
+  picker.addEventListener('close', () => {
+    switchActor.setAttribute('aria-expanded', 'false');
+    playerStatus.textContent = playerRefresh.disabled ? 'Memuat daftar karakter…' : '';
+  }, { signal });
+  playerCards.addEventListener('click', event => {
+    const card = event.target.closest('button[data-actor]');
+    if (card) void chooseActor(card.dataset.actor);
+  }, { signal });
+  signal.addEventListener('abort', () => {
+    if (picker.open) picker.close();
+    switchActor.setAttribute('aria-expanded', 'false');
+    playerCards.replaceChildren();
+    playerStatus.textContent = '';
+    playerRefresh.disabled = false;
+    disposeModel(playerAsset?.scene);
+  }, { once: true });
   const remotePackages = new Map();
   function fetchPackage(id) {
     const sha = published.get(id)?.sha;
@@ -462,6 +554,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     for (const [key, asset] of library) {
       if (asset.packageId === id && asset.packageSha === sha) {
         current = model.value = key;
+        usingPlayer = false;
         render();
         return;
       }
@@ -481,6 +574,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
       library.set(current, next);
       model.add(new Option(next.name, current));
       model.value = current;
+      usingPlayer = false;
       galleryStatus.textContent = next.name + ' dipakai oleh pemain.';
     } catch(error) { if (!signal.aborted) galleryStatus.textContent = error.message; }
     finally { pending = false; if (!signal.aborted) render(); }
@@ -582,6 +676,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     const invalid = Object.values(settings).find(input => !input.checkValidity() || !Number.isFinite(input.valueAsNumber));
     if (invalid) { invalid.reportValidity(); return; }
     Object.assign(asset, structuredClone(draft));
+    usingPlayer = false;
     status.textContent = 'Karakter dan animasi diterapkan ke pemain lokal.';
   }, { signal });
   controls.append(apply);
@@ -620,7 +715,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     fill(audition,asset,'','Ikuti gerakan');
   }
   model.add(new Option('Capsule bawaan','capsule'));
-  model.addEventListener('change', () => { current = model.value; render(); }, {signal});
+  model.addEventListener('change', () => { current = model.value; usingPlayer = false; render(); }, {signal});
 
   async function load(input, animationsOnly) {
     const file = input.files?.[0];
@@ -655,6 +750,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
         payload = null;
         status.textContent = Object.keys(next.detected).length + ' slot terdeteksi dari nama klip.';
       }
+      usingPlayer = false;
     } catch (error) {
       if (!signal.aborted) status.textContent = error.message || 'GLB gagal dimuat.';
     } finally {
@@ -670,7 +766,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
 
   return {
     networkState() {
-      const id = library.get(current).packageId;
+      const id = equippedAsset().packageId;
       return id && (published.has(id) || id === preset?.package) ? { id } : undefined;
     },
     createPeer(THREE, scene) {
@@ -719,22 +815,22 @@ export function mountCharacterPanel(world, signal, preset, publication) {
       return { package: asset.packageId, options: asset.options, mapping: asset.mapping, loops: asset.loops, rootMotion: asset.rootMotion };
     },
     hasAnimation(slot) {
-      const asset = library.get(current);
+      const asset = equippedAsset();
       return !asset.scene || Boolean(animationClip(asset, slot));
     },
     attackMotion(slot) {
-      const asset = library.get(current);
+      const asset = equippedAsset();
       const clip = animationClip(asset, slot);
       return clip && runtime ? runtime.attackMotion(asset, clip) : null;
     },
-    animationSpeed() { return library.get(current).options?.speed ?? 1; },
+    animationSpeed() { return equippedAsset().options?.speed ?? 1; },
     duration(slot) {
-      const asset = library.get(current);
+      const asset = equippedAsset();
       const clip = animationClip(asset, slot);
       return clip ? clip.duration / asset.options.speed : undefined;
     },
     height() {
-      const { options } = library.get(current);
+      const { options } = equippedAsset();
       return options ? 1.8 * options.scale + options.height : null;
     },
     attach(THREE, scene) {
@@ -813,7 +909,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
         const images = new Set();
         for (const asset of library.values()) disposeModel(asset.scene, images);
       }, {once:true});
-      return (actor, dt, capsule, timeScale) => view.update(library.get(current), actor, dt, capsule, timeScale, preview);
+      return (actor, dt, capsule, timeScale) => view.update(equippedAsset(), actor, dt, capsule, timeScale, usingPlayer ? '' : preview);
     },
   };
 }
