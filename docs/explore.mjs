@@ -5,7 +5,7 @@ import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=9';
 import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs?v=3';
 import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=3';
 import { createCameraRig } from './camera-rig.mjs?v=pc';
-import { availableLocomotion, createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=5';
+import { availableLocomotion, createMovement, stepMovement, Stance, ActorState } from './movement.mjs?v=6';
 
 export async function mountExploration(world, signal, replication, settings, getCamera = () => null, characterEditor, combatPanel, playerName = () => '') {
   const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js');
@@ -313,7 +313,7 @@ export async function mountExploration(world, signal, replication, settings, get
     input.sprint = sprintPointer !== null || held.has('sprint') || held.has('ShiftLeft') || held.has('ShiftRight');
     input.jump = jumpUntil >= now && actor.state === ActorState.GROUNDED && actor.dashLeft === 0 && !input.dash;
     if (input.jump) jumpUntil = 0;
-    if (actor.hp > 0) stepMovement(actor, combat.movement(input), dt * combat.timeScale(), settings, canAnimate);
+    if (actor.hp > 0) stepMovement(actor, combat.movement(input), dt * combat.timeScale(), settings, canAnimate, characterEditor?.locomotionDelta);
     input.jump = input.crouch = input.dash = false;
     actor.x = THREE.MathUtils.clamp(actor.x, -49, 49);
     actor.z = THREE.MathUtils.clamp(actor.z, -49, 49);

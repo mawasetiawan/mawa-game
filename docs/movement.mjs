@@ -34,7 +34,7 @@ export function availableLocomotion(canAnimate) {
   };
 }
 
-export function stepMovement(actor, input, dt, settings = defaults, canAnimate = () => true) {
+export function stepMovement(actor, input, dt, settings = defaults, canAnimate = () => true, characterMotion) {
   const magnitude = Math.hypot(input.x, input.z);
   const moving = magnitude > 0.08;
   const strength = Math.min(1, magnitude);
@@ -76,10 +76,15 @@ export function stepMovement(actor, input, dt, settings = defaults, canAnimate =
     input.sprint && available.sprintHold ? Gait.SPRINT :
       input.walk && available.walkToggle ? Gait.WALK : available.defaultGait;
   const canMove = moving && (actor.stance === Stance.CROUCH ? canAnimate('crouchMove') : locomotion !== Gait.STOP);
+  const previousPhase = actor.locomotionPhase;
+  actor.locomotionPhase = undefined;
   if (canMove && remaining > 0) {
     const speed = locomotion === Gait.WALK ? settings.walkSpeed : locomotion === Gait.SPRINT ? settings.sprintSpeed : settings.runSpeed;
-    actor.x += x * speed * strength * remaining;
-    actor.z += z * speed * strength * remaining;
+    const slot = actor.stance === Stance.CROUCH ? 'crouchMove' : locomotion;
+    const delta = actor.state === ActorState.GROUNDED && !actor.action ?
+      characterMotion?.(actor, slot, previousPhase, remaining, strength, x, z) : undefined;
+    actor.x += delta?.x ?? x * speed * strength * remaining;
+    actor.z += delta?.z ?? z * speed * strength * remaining;
   }
   if (actor.state !== ActorState.GROUNDED) {
     actor.verticalSpeed -= settings.gravity * dt;

@@ -1,5 +1,5 @@
 import { characterRepository, rawCharacterRoot, packageName, squareThumbnail, validThumbnail, fetchCharacterCard } from './character-gallery.mjs';
-import { horizontalRootMotion, rootMotionOptions } from './root-motion.mjs';
+import { horizontalRootMotion, rootDelta, rootMotionOptions } from './root-motion.mjs?v=2';
 import { packCharacter, resampleCharacter, unpackCharacter } from './character-package.mjs';
 import { attackSlot, combatActions, comboLimit, detectAnimations, loopsByDefault } from './animation-slots.mjs';
 
@@ -15,6 +15,7 @@ const actionGroups = {
   ])),
 };
 const states = Object.assign({}, ...Object.values(groups), ...Object.values(actionGroups));
+const movingSlots = new Set(['walk', 'run', 'sprint', 'crouchMove']);
 const resolveMapping = asset => ({ ...asset.detected, ...asset.mapping });
 function clipKey(mapping, slot) {
   const key = mapping[slot];
@@ -115,8 +116,9 @@ function createCharacterView(THREE, scene) {
       const key = selectedPreview || slotKey || (fallingWithJump ? clipKey(mapping, 'jump') : undefined) ||
         (slot === 'death' ? undefined : clipKey(mapping, 'idle'));
       const sourceClip = clipFor(key);
-      const motion = !selectedPreview && slot === actor.action && /Combo[1-4]$/.test(slot ?? '') ?
-        horizontalRootMotion(THREE, asset, sourceClip) : null;
+      const locomotionPose = Boolean(selectedPreview) || movingSlots.has(slot);
+      const attackPose = !selectedPreview && asset.rootMotion?.enabled && slot === actor.action && /Combo[1-4]$/.test(slot ?? '');
+      const motion = locomotionPose || attackPose ? horizontalRootMotion(THREE, asset, sourceClip, locomotionPose) : null;
       const clip = motion?.pose ?? sourceClip;
       const once = !selectedPreview && (slot === 'death' || fallingWithJump || /Combo[1-4]$/.test(slot ?? '') || (slot !== 'fall' &&
         !(asset.loops[slot] ?? loopsByDefault(slot))));
@@ -141,6 +143,8 @@ function createCharacterView(THREE, scene) {
           else previous.fadeOut(options.blend);
         }
       }
+      const phase = actor.locomotionPhase;
+      if (!selectedPreview && phase?.clip === sourceClip && phase.slot === slot) action.time = phase.start;
       remaining -= dt * options.speed * timeScale;
       mixer.timeScale = options.speed * timeScale;
       mixer.update(dt);
@@ -748,14 +752,29 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   const rootToggle = document.createElement('input');
   rootToggle.type = 'checkbox';
   const rootSelect = document.createElement('select');
+  const locomotionSelect = document.createElement('select');
+  locomotionSelect.add(new Option('In-Place · capsule', 'in-place'));
+  locomotionSelect.add(new Option('Root Motion · animasi', 'root'));
+  const locomotionLabel = document.createElement('label');
+  locomotionLabel.append('Sumber gerakan', locomotionSelect);
+  const rootSpeed = Object.assign(document.createElement('input'), { type: 'checkbox' });
+  const rootSpeedLabel = document.createElement('label');
+  rootSpeedLabel.append('Hitung kecepatan capsule dari root', rootSpeed);
+  const rootSettings = document.createElement('details');
+  const rootTitle = Object.assign(document.createElement('summary'), { textContent: 'Root Motion & In-Place' });
   const rootLabel = document.createElement('label');
   rootLabel.append('Root motion serangan (X/Z)', rootToggle);
   const rootNodeLabel = document.createElement('label');
-  rootNodeLabel.append('Bone root motion', rootSelect);
-  controls.append(rootLabel, rootNodeLabel);
+  rootNodeLabel.append('Node root motion', rootSelect);
+  rootSettings.append(rootTitle, locomotionLabel, rootSpeedLabel, rootNodeLabel, rootLabel);
+  controls.append(rootSettings);
+  locomotionSelect.addEventListener('change', () => {
+    draft.rootMotion.locomotion = locomotionSelect.value;
+    rootSpeed.disabled = locomotionSelect.value === 'root';
+  }, { signal });
+  rootSpeed.addEventListener('change', () => { draft.rootMotion.useRootSpeed = rootSpeed.checked; }, { signal });
   rootToggle.addEventListener('change', () => {
     draft.rootMotion.enabled = rootToggle.checked;
-    rootSelect.disabled = !rootToggle.checked;
   }, { signal });
   rootSelect.addEventListener('change', () => {
     draft.rootMotion.node = rootSelect.value;
@@ -797,10 +816,12 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     if (!asset.scene) return;
     draft = structuredClone({ options: asset.options, mapping: asset.mapping, loops: asset.loops, rootMotion: asset.rootMotion });
     rootToggle.checked = asset.rootMotion.enabled;
-    rootSelect.replaceChildren(new Option('Otomatis (Root / Armature)', ''),
+    locomotionSelect.value = asset.rootMotion.locomotion;
+    rootSpeed.checked = asset.rootMotion.useRootSpeed;
+    rootSpeed.disabled = locomotionSelect.value === 'root';
+    rootSelect.replaceChildren(new Option('Otomatis (Root / Armature / Hips)', ''),
       ...runtime.motionNodes(asset).map(name => new Option(name, name)));
     rootSelect.value = asset.rootMotion.node;
-    rootSelect.disabled = !rootToggle.checked;
     for (const [key,field] of Object.entries(settings)) field.value = asset.options[key];
     for (const [key, { select, loop }] of stateInputs) {
       const detected = animationClip({ clips: asset.clips, detected: asset.detected }, key);
@@ -937,7 +958,14 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     attackMotion(slot) {
       const asset = equippedAsset();
       const clip = animationClip(asset, slot);
-      return clip && runtime ? runtime.attackMotion(asset, clip) : null;
+      return asset.rootMotion?.enabled && clip && runtime ? runtime.attackMotion(asset, clip) : null;
+    },
+    locomotionDelta(actor, slot, previousPhase, dt, strength, directionX, directionZ) {
+      const asset = equippedAsset();
+      const options = asset.rootMotion;
+      const clip = animationClip(asset, slot);
+      if (!clip || !runtime || (options.locomotion !== 'root' && !options.useRootSpeed)) return null;
+      return runtime.locomotionDelta(asset, clip, actor, slot, previousPhase, dt, strength, directionX, directionZ);
     },
     animationSpeed() { return equippedAsset().options?.speed ?? 1; },
     duration(slot) {
@@ -1020,6 +1048,28 @@ export function mountCharacterPanel(world, signal, preset, publication) {
             const { x, z } = motion.offset(seconds * speed);
             return { x: (x * cos + z * sin) * scale, z: (z * cos - x * sin) * scale };
           };
+        },
+        locomotionDelta(asset, clip, actor, slot, previous, dt, strength, directionX, directionZ) {
+          const motion = horizontalRootMotion(THREE, asset, clip, true);
+          if (!motion) return null;
+          const scale = asset.fit.scale.x * asset.options.scale;
+          const advance = dt * asset.options.speed;
+          if (asset.rootMotion.locomotion === 'in-place') {
+            const stride = motion.offset(clip.duration);
+            const distance = Math.hypot(stride.x, stride.z) * scale;
+            if (distance < .001) return null;
+            const step = distance / clip.duration * advance * strength;
+            return { x: directionX * step, z: directionZ * step };
+          }
+          const loop = asset.loops[slot] ?? loopsByDefault(slot);
+          const sameMotion = previous?.clip === clip && previous.slot === slot && previous.motion === motion;
+          const start = sameMotion ? previous.end : 0;
+          const end = start + advance;
+          actor.locomotionPhase = { clip, slot, motion, start, end: loop ? end % clip.duration : Math.min(end, clip.duration) };
+          const { x, z } = rootDelta(motion.offset, clip.duration, start, end, loop);
+          const angle = Math.atan2(actor.facingX, actor.facingZ) + asset.options.yaw * Math.PI / 180;
+          const [sin, cos] = [Math.sin(angle), Math.cos(angle)];
+          return { x: (x * cos + z * sin) * scale * strength, z: (z * cos - x * sin) * scale * strength };
         },
         prepare(payload) {
           let meshCount = 0;
