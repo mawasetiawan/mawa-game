@@ -51,7 +51,7 @@ export function touchesAttack(origin, target, attack) {
   return Math.hypot(target.x - x, target.z - z, capsuleY - y) <= bodyRadius + strikeRadius;
 }
 
-export function createCombat(actor, settings, fallbackSpawn, animationDuration, onShake, onControlReset, identity = 'local', shakeEnabled, attackMotion, onAttack, sharedActions = () => settings.actions, canAnimate = () => true) {
+export function createCombat(actor, settings, fallbackSpawn, animationDuration, onShake, onControlReset, identity = 'local', shakeEnabled, attackMotion, onAttack, sharedActions = () => settings.actions, canAnimate = () => true, animationSpeed = () => 1) {
   let clock = 0, serial = 0, swing, combo, respawnAt = 0;
   let stunUntil = 0, slowUntil = 0, graceUntil = 0, impactUntil = 0;
   const connections = new Map();
@@ -63,10 +63,10 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
     const slot = attackSlot(id, stage);
     const clipDuration = animationDuration(slot);
     const seconds = Number.isFinite(clipDuration) && clipDuration > 0 ?
-      Math.max(.18, clipDuration) : .52 + (id === 'ultimate' ? .22 : 0);
+      clipDuration : .52 + (id === 'ultimate' ? .22 : 0);
     const origin = originOf(actor);
     swing = {
-      id, stage, elapsed: 0, seconds, origin, reach: settings.actions[id].reach, motion: attackMotion?.(slot),
+      id, stage, elapsed: 0, speed: animationSpeed(), seconds, origin, reach: settings.actions[id].reach, motion: attackMotion?.(slot),
       packet: { kind: id, id: ++serial, yaw: Math.atan2(actor.facingX, actor.facingZ) },
     };
     actor.range = { ...origin, radius: swing.reach };
@@ -167,6 +167,7 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
   function tick(dt, now, players) {
     clock += dt;
     if (clock >= impactUntil) actor.impacts = null;
+    if (swing) swings.get(swing.packet.id).expires = clock + 1;
     for (const [id, entry] of swings) if (clock > entry.expires) swings.delete(id);
     for (const id of connections.keys()) if (!players.has(id)) connections.delete(id);
     for (const pose of players.values()) {
@@ -199,7 +200,10 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
       }
       if (!actor.hp) return;
     }
-    if (swing) swing.elapsed += dt * (clock < slowUntil ? .45 : 1);
+    if (swing) {
+      // Root-motion sampling and swing timing use the same play rate as the mixer.
+      swing.elapsed += dt * (clock < slowUntil ? .45 : 1) * animationSpeed() / swing.speed;
+    }
     if (swing && swing.elapsed >= swing.seconds) {
       const { id, stage } = swing;
       if (swing.motion) applyRootMotion(swing.seconds);

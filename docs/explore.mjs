@@ -1,6 +1,7 @@
+import { isWorldTextOrMenu, preventWorldDoubleTap } from './world-input.mjs';
 import { mountPcControls } from './pc-controls.mjs';
 import { createAttackAudio } from './combat-audio.mjs';
-import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=8';
+import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=9';
 import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs?v=2';
 import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=3';
 import { createCameraRig } from './camera-rig.mjs?v=pc';
@@ -64,7 +65,8 @@ export async function mountExploration(world, signal, replication, settings, get
     kind => combatConfig.actions[kind]?.shake,
     slot => characterEditor?.attackMotion(slot),
     kind => playSound(combatPanel?.audio?.[kind]),
-    () => (replication.preview ? combatConfig : combatPanel?.shared ?? combatConfig).actions, canAnimate);
+    () => (replication.preview ? combatConfig : combatPanel?.shared ?? combatConfig).actions, canAnimate,
+    () => characterEditor?.animationSpeed() ?? 1);
   const editing = () => world.hasAttribute('data-edit-hud') || world.hasAttribute('data-edit-spawn');
   const control = mountCombatHud(world, actions, signal, {
     press(id) { if (!editing() && combat.press(id)) previewFighting = true; },
@@ -111,6 +113,7 @@ export async function mountExploration(world, signal, replication, settings, get
 
   const options = { signal };
   const pc = mountPcControls(world, signal, resetControls);
+  preventWorldDoubleTap(world, signal);
   const cameraRig = createCameraRig(THREE, canvas, camera, actor, settings, getCamera, signal, {
     desktop: pc.desktop,
     button: pc.cameraButton,
@@ -156,12 +159,11 @@ export async function mountExploration(world, signal, replication, settings, get
     if (event.target.matches('input, textarea, [contenteditable]')) resetControls();
   }, options);
   const requestJump = () => { if (!editing() && !combat.blocked() && canAnimate('jump')) jumpUntil = performance.now() + 140; };
-  const hasMoveInput = () => pointer !== null || (pc.desktop() ?
-    ['forward', 'left', 'back', 'right'] : ['KeyW', 'KeyA', 'KeyS', 'KeyD']).some(key => held.has(key));
   window.addEventListener('keydown', event => {
-    if (gameplayBlocked() || event.altKey || event.metaKey ||
-      event.target.closest?.('input, textarea, select, [contenteditable], dialog, .developer-panel') ||
-      ((event.code === 'Space' || event.code === 'Enter') && event.target.closest?.('button') && !hasMoveInput())) return;
+    if (world.hidden || pc.open() || isWorldTextOrMenu(event.target)) return;
+    const tab = event.code === 'Tab' || event.key === 'Tab';
+    if (tab || event.code === 'Space' || event.code === 'Enter') event.preventDefault();
+    if (gameplayBlocked() || event.altKey || event.metaKey) return;
     if (pc.desktop()) {
       const action = pc.action(event.code);
       if (!action || (event.ctrlKey && !event.code.startsWith('Control'))) return;

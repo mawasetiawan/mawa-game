@@ -144,7 +144,7 @@ html.immersive-game,html.immersive-game body{overflow:hidden;overscroll-behavior
 .world.immersive-map .map-notice{top:calc(max(12px,env(safe-area-inset-top)) + 52px);max-width:min(330px,calc(100% - 32px));z-index:7}
 
 /* Keep browser double-tap zoom off without changing the canvas pinch gesture. */
-html{touch-action:manipulation}
+html,.world,.world :is(button,a,summary){touch-action:manipulation}
 .login-choice{max-width:min(26rem,calc(100% - 2rem));color:#f3f6ec;background:#13272f;border-color:#a0c2a85c}
 .login-choice::backdrop{background:#09151bc0}
 .login-choice[open],.login-choice #loginLink{display:grid;gap:.65rem}

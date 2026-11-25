@@ -600,6 +600,7 @@ export function mountCharacterPanel(world, signal, preset) {
       const clip = animationClip(asset, slot);
       return clip && runtime ? runtime.attackMotion(asset, clip) : null;
     },
+    animationSpeed() { return library.get(current).options?.speed ?? 1; },
     duration(slot) {
       const asset = library.get(current);
       const clip = animationClip(asset, slot);
