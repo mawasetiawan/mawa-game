@@ -8,14 +8,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#101e26">
-<link rel="stylesheet" href="./style.css?v=release40">
+<link rel="stylesheet" href="./style.css?v=release41">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./mawa-icon-192.png">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}</script>
 </head>
 <body>
 <main>
-  <header><a class="brand" href="./">MAWA GAME</a><div id="account" class="account" hidden></div><button id="logout" hidden>Keluar</button><button id="installGame" type="button" hidden>Main di Layar Utama</button><small class="game-version" aria-label="Versi game">v26.11.25-40</small></header>
+  <header><a class="brand" href="./">MAWA GAME</a><div id="account" class="account" hidden></div><button id="logout" hidden>Keluar</button><button id="installGame" type="button" hidden>Main di Layar Utama</button><small class="game-version" aria-label="Versi game">v26.11.25-41</small></header>
   <section id="gate" class="center panel">
     <h1>Masuk ke Mawa Game</h1>
     <button id="login" type="button" aria-haspopup="dialog" aria-controls="loginChoice" disabled>Masuk dengan Google</button>
@@ -69,7 +69,7 @@
     <!-- HUD icons adapted from Tabler Icons (MIT). Copyright (c) 2020 Paweł Kuna. https://github.com/tabler/tabler-icons/blob/main/LICENSE -->
     <div class="gameplay-hud">
     <div class="hud-top">
-      <div class="hud-tag"><small>EKSPLORASI · <span class="game-version" aria-label="Versi game">v26.11.25-40</span></small><h2 id="mapTitle">Map Kosong</h2></div>
+      <div class="hud-tag"><small>EKSPLORASI · <span class="game-version" aria-label="Versi game">v26.11.25-41</span></small><h2 id="mapTitle">Map Kosong</h2></div>
       <div class="hud-compass" aria-hidden="true">· &nbsp; N &nbsp; ·</div>
       <nav class="world-toolbar" aria-label="Kontrol HUD">
         <button id="switchActor" type="button" aria-label="Switch Actor" aria-haspopup="dialog" aria-controls="actorPicker" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="7" r="3"/><path d="M2 19v-2a4 4 0 0 1 4-4h4m4-4h8l-3-3m3 3-3 3m3 5h-8l3-3m-3 3 3 3"/></svg><span>Switch Actor</span></button>
@@ -121,6 +121,6 @@
   </section>
   <p id="status" role="status"></p>
 </main>
-<script type="module" src="./app.mjs?v=release40"></script>
+<script type="module" src="./app.mjs?v=release41"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 import { characterRepository, rawCharacterRoot, packageName, squareThumbnail, validThumbnail, fetchCharacterCard } from './character-gallery.mjs';
-import { horizontalRootMotion, rootDelta, rootMotionOptions } from './root-motion.mjs?v=2';
+import { createInPlaceLock, horizontalRootMotion, rootDelta, rootMotionOptions } from './root-motion.mjs?v=3';
 import { packCharacter, resampleCharacter, unpackCharacter } from './character-package.mjs';
 import { attackSlot, combatActions, comboLimit, detectAnimations, loopsByDefault } from './animation-slots.mjs';
 
@@ -66,7 +66,7 @@ function disposeModel(scene, closedImages = new Set()) {
 function createCharacterView(THREE, scene) {
   const root = new THREE.Group();
   scene.add(root);
-  let active, action, mixer, crouching, airborne, transition, playback, remaining = 0;
+  let active, action, mixer, crouching, airborne, transition, playback, lockedRoot, remaining = 0;
 
   function clear() {
     mixer?.stopAllAction();
@@ -83,7 +83,7 @@ function createCharacterView(THREE, scene) {
         active = asset;
         crouching = airborne = transition = undefined;
         remaining = 0;
-        action = playback = undefined;
+        action = playback = lockedRoot = undefined;
         mixer = asset?.scene ? new THREE.AnimationMixer(asset.scene) : undefined;
         if (asset?.fit) root.add(asset.fit);
       }
@@ -116,9 +116,15 @@ function createCharacterView(THREE, scene) {
       const key = selectedPreview || slotKey || (fallingWithJump ? clipKey(mapping, 'jump') : undefined) ||
         (slot === 'death' ? undefined : clipKey(mapping, 'idle'));
       const sourceClip = clipFor(key);
+      const lockRoot = asset.rootMotion?.locomotion === 'in-place';
+      if (lockRoot !== lockedRoot) {
+        mixer.stopAllAction();
+        action = playback = undefined;
+        lockedRoot = lockRoot;
+      }
       const locomotionPose = Boolean(selectedPreview) || movingSlots.has(slot);
       const attackPose = !selectedPreview && asset.rootMotion?.enabled && slot === actor.action && /Combo[1-4]$/.test(slot ?? '');
-      const motion = locomotionPose || attackPose ? horizontalRootMotion(THREE, asset, sourceClip, locomotionPose) : null;
+      const motion = !lockRoot && (locomotionPose || attackPose) ? horizontalRootMotion(THREE, asset, sourceClip, locomotionPose) : null;
       const clip = motion?.pose ?? sourceClip;
       const once = !selectedPreview && (slot === 'death' || fallingWithJump || /Combo[1-4]$/.test(slot ?? '') || (slot !== 'fall' &&
         !(asset.loops[slot] ?? loopsByDefault(slot))));
@@ -126,6 +132,7 @@ function createCharacterView(THREE, scene) {
       if (!clip) {
         if (action) action.paused = true;
         playback = undefined;
+        if (lockRoot) asset.lockInPlace(asset.rootMotion.node);
         return;
       }
       if (playback !== playbackKey || action?.getClip() !== clip) {
@@ -148,6 +155,7 @@ function createCharacterView(THREE, scene) {
       remaining -= dt * options.speed * timeScale;
       mixer.timeScale = options.speed * timeScale;
       mixer.update(dt);
+      if (lockRoot) asset.lockInPlace(asset.rootMotion.node);
     },
   };
 }
@@ -1086,6 +1094,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
           fit.add(offset);
           const clips = payload.animations.slice(0, 64);
           return { scene: payload.scene, fit, clips, mapping: {}, detected: detectAnimations(clips), loops: {}, embeddedCount: clips.length,
+            lockInPlace: createInPlaceLock(THREE, fit, payload.scene),
             rootMotion: rootMotionOptions(), options: {scale:1,height:0,yaw:0,speed:1,blend:.16} };
         },
       };

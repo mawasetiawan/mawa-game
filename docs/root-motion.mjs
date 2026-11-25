@@ -1,4 +1,78 @@
 const prepared = new WeakMap();
+const hipsName = /(?:hips|pelvis)(?:_\d+)?$/i;
+
+export function createInPlaceLock(THREE, fit, scene) {
+  const carriers = new Set([scene]);
+  const hips = new Set();
+  const meshes = [];
+  const rest = new Map();
+  function addChain(node) {
+    for (; node && node !== scene; node = node.parent) carriers.add(node);
+  }
+  fit.updateWorldMatrix(true, true);
+  const fromWorld = fit.matrixWorld.clone().invert();
+  scene.traverse(node => {
+    if (node.isMesh) meshes.push(node);
+    if (node.isBone && hipsName.test(node.name)) hips.add(node);
+    if (node.isSkinnedMesh && node.skeleton) {
+      addChain(node);
+      const bones = new Set(node.skeleton.bones);
+      for (const bone of bones) if (!bones.has(bone.parent)) addChain(bone);
+    }
+    rest.set(node, { position: node.position.clone(), rotation: node.quaternion.clone(), scale: node.scale.clone() });
+  });
+  if (meshes.length === 1) addChain(meshes[0]);
+  // Rigid models can have several meshes under a single animated armature/group.
+  for (let node = meshes[0]?.parent; node && node !== scene; node = node.parent) {
+    if (meshes.every(mesh => {
+      for (let parent = mesh.parent; parent; parent = parent.parent) if (parent === node) return true;
+      return false;
+    })) { addChain(node); break; }
+  }
+  for (const hip of hips) addChain(hip);
+
+  const bodyMotion = [...hips].map(node => {
+    const basis = new THREE.Matrix3().setFromMatrix4(fromWorld.clone().multiply(node.parent.matrixWorld));
+    const determinant = basis.determinant();
+    if (!Number.isFinite(determinant) || determinant === 0) return null;
+    const inverse = basis.clone().invert();
+    const up = new THREE.Vector3(0, 1, 0).applyMatrix3(inverse).normalize();
+    return { node, basis, inverse, up, inverseRest: rest.get(node).rotation.clone().invert() };
+  }).filter(Boolean);
+  const translation = new THREE.Vector3();
+  const rotation = new THREE.Quaternion();
+  const twist = new THREE.Quaternion();
+  let selectedName, selected;
+  const articulatedHips = new Set(bodyMotion.map(({ node }) => node));
+  const fixedNodes = [...carriers].filter(node => rest.has(node) && !articulatedHips.has(node));
+
+  function restore(node) {
+    const pose = rest.get(node);
+    node.position.copy(pose.position);
+    node.quaternion.copy(pose.rotation);
+    node.scale.copy(pose.scale);
+  }
+
+  return name => {
+    if (name !== selectedName) {
+      selectedName = name;
+      selected = name ? THREE.PropertyBinding.findNode(scene, name) : null;
+    }
+    for (const node of fixedNodes) restore(node);
+    if (selected && rest.has(selected) && !carriers.has(selected)) restore(selected);
+    for (const { node, basis, inverse, up, inverseRest } of bodyMotion) {
+      const pose = rest.get(node);
+      translation.copy(node.position).sub(pose.position).applyMatrix3(basis);
+      translation.x = translation.z = 0;
+      node.position.copy(pose.position).add(translation.applyMatrix3(inverse));
+      rotation.copy(node.quaternion).multiply(inverseRest);
+      const along = rotation.x * up.x + rotation.y * up.y + rotation.z * up.z;
+      twist.set(up.x * along, up.y * along, up.z * along, rotation.w).normalize().invert();
+      node.quaternion.copy(rotation.multiply(twist).multiply(pose.rotation));
+      node.scale.copy(pose.scale);
+    }
+  };
+}
 
 export function rootMotionOptions(settings) {
   return {
@@ -17,13 +91,12 @@ export function horizontalRootMotion(THREE, asset, clip, allowHips = false) {
   const cached = clips.get(clip);
   if (cached?.requested === requested && cached.allowHips === allowHips) return cached.motion;
   const preferred = /(?:^|[:_])(root|rootmotion|motionroot|armature)(?:_\d+)?$/i;
-  const hips = /(?:hips|pelvis)(?:_\d+)?$/i;
   const tracks = clip.tracks.flatMap((track, index) => {
     if (track.ValueTypeName !== 'vector' || !track.name.endsWith('.position')) return [];
     const binding = THREE.PropertyBinding.parseTrackName(track.name);
     const name = binding.objectName === 'bones' ? binding.objectIndex : binding.nodeName;
     if (requested ? name === requested : preferred.test(name ?? '')) return [{ name, index, priority: 0 }];
-    if (!requested && allowHips && hips.test(name ?? '')) return [{ name, index, priority: 1 }];
+    if (!requested && allowHips && hipsName.test(name ?? '')) return [{ name, index, priority: 1 }];
     return [];
   });
   tracks.sort((a, b) => a.priority - b.priority);
