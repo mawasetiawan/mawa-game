@@ -21,10 +21,14 @@ function clipKey(mapping, slot) {
   return /^\d+$/.test(key ?? '') ? key : undefined;
 }
 
+function playableClip(clip) {
+  return Boolean(clip?.tracks?.length && Number.isFinite(clip.duration) && clip.duration > 0);
+}
+
 function animationClip(asset, slot) {
   const key = asset.mapping?.[slot] ?? asset.detected?.[slot];
   const clip = /^\d+$/.test(key ?? '') ? asset.clips?.[Number(key)] : undefined;
-  return clip?.tracks?.length && Number.isFinite(clip.duration) && clip.duration > 0 ? clip : undefined;
+  return playableClip(clip) ? clip : undefined;
 }
 const mib = 1024 * 1024;
 const maxBytes = 32 * mib;
@@ -145,6 +149,11 @@ function createCharacterView(THREE, scene) {
 }
 
 export function mountCharacterPanel(world, signal, preset, publication) {
+  const developerPanel = world.querySelector('#developerPanel');
+  let characterTabActive = true;
+  developerPanel?.addEventListener('mawa:developer-tab', event => {
+    characterTabActive = event.detail === 'character';
+  }, { signal });
   const switchActor = world.querySelector('#switchActor');
   const picker = world.querySelector('#actorPicker');
   const playerCards = picker.querySelector('ul');
@@ -731,8 +740,8 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   world.querySelector('.developer-fields').append(section);
 
   function fill(select, asset, value, empty) {
-    select.replaceChildren(new Option(empty, ''), ...asset.clips.map(({ name }, index) =>
-      new Option(name || 'Klip ' + (index + 1), String(index))));
+    select.replaceChildren(new Option(empty, ''), ...asset.clips.flatMap((clip, index) =>
+      playableClip(clip) ? [new Option(clip.name || 'Klip ' + (index + 1), String(index))] : []));
     select.value = value;
   }
 
@@ -769,8 +778,9 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     controls.hidden = !asset.scene;
     clipSummary.hidden = !asset.scene;
     if (asset.scene) {
-      const extra = asset.clips.length - asset.embeddedCount;
-      clipSummary.textContent = asset.embeddedCount + ' klip bawaan dari file karakter' +
+      const bundled = asset.clips.slice(0, asset.embeddedCount).filter(playableClip).length;
+      const extra = asset.clips.slice(asset.embeddedCount).filter(playableClip).length;
+      clipSummary.textContent = bundled + ' klip bawaan dari file karakter' +
         (extra ? ' · ' + extra + ' klip tambahan' : '') + '.';
     }
     importMesh.disabled = pending || !runtime || library.size >= 6;
@@ -801,8 +811,9 @@ export function mountCharacterPanel(world, signal, preset, publication) {
       select.value = asset.mapping[key] ?? '';
       loop.checked = key === 'fall' || (key !== 'death' && (asset.loops[key] ?? loopsByDefault(key)));
     }
-    audition.disabled = pending || !asset.clips.length;
-    fill(audition, asset, '', asset.clips.length ? 'Pilih klip untuk diputar' : 'Tidak ada klip Animasi');
+    const canPreview = asset.clips.some(playableClip);
+    audition.disabled = pending || !canPreview;
+    fill(audition, asset, '', canPreview ? 'Ikuti gerakan' : 'Tidak ada klip animasi');
   }
   model.add(new Option('Capsule bawaan','capsule'));
   model.addEventListener('change', () => { current = model.value; usingPlayer = false; render(); }, {signal});
@@ -816,7 +827,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     render();
     status.dataset.state = 'pending';
     status.textContent = 'Memuat ' + file.name + '…';
-    let payload;
+    let payload, firstPreview = -1;
     try {
       const extension = /\.(glb|fbx)$/i.exec(file.name);
       if (!extension || file.size > maxBytes || file.size < 12) throw Error('Pilih file GLB atau FBX valid berukuran maksimal 32 MiB.');
@@ -841,8 +852,10 @@ export function mountCharacterPanel(world, signal, preset, publication) {
         library.set(current,next);
         model.add(new Option(file.name, current));
         model.value = current;
+        const clipCount = next.clips.filter(playableClip).length;
+        firstPreview = next.clips.findIndex(playableClip);
         status.textContent = file.name + ' berhasil dimuat. ' +
-          (next.embeddedCount ? next.embeddedCount + ' klip bawaan siap diputar lewat Preview animasi.' : 'File ini tidak berisi klip animasi yang terbaca.') +
+          (clipCount ? clipCount + ' klip bawaan terbaca. Memutar preview klip pertama.' : 'File ini tidak berisi klip animasi yang terbaca.') +
           (payload.externalTextures ? ' Tekstur eksternal dilewati. Sematkan tekstur saat ekspor FBX agar tampil di game.' : '');
         payload = null;
       }
@@ -856,7 +869,10 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     } finally {
       if (payload) disposeModel(payload.scene);
       pending = false;
-      if (!signal.aborted) render();
+      if (!signal.aborted) {
+        render();
+        if (firstPreview >= 0) audition.value = preview = String(firstPreview);
+      }
     }
   }
   meshFile.addEventListener('change', () => void load(meshFile, false), { signal });
@@ -1032,7 +1048,10 @@ export function mountCharacterPanel(world, signal, preset, publication) {
         const images = new Set();
         for (const asset of library.values()) disposeModel(asset.scene, images);
       }, {once:true});
-      return (actor, dt, capsule, timeScale) => view.update(equippedAsset(), actor, dt, capsule, timeScale, usingPlayer ? '' : preview);
+      return (actor, dt, capsule, timeScale) => {
+        const previewVisible = !usingPlayer && characterTabActive && !developerPanel?.hidden && section.open && edit.open;
+        view.update(equippedAsset(), actor, dt, capsule, timeScale, previewVisible ? preview : '');
+      };
     },
   };
 }
