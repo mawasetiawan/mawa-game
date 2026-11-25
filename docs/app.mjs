@@ -1,6 +1,6 @@
-import { loadDeveloperConfig, mountDeveloperConfigPanel } from './developer-config.mjs?v=3';
+import { loadDeveloperConfig, mountDeveloperConfigPanel, createDeveloperPublication } from './developer-config.mjs?v=4';
 import { mountCombatPanel } from './combat.mjs?v=9';
-import { mountCharacterPanel } from './character-editor.mjs?v=11';
+import { mountCharacterPanel } from './character-editor.mjs?v=12';
 import { mountCameraCuePanel } from './camera-cues.mjs?v=3';
 import { mountHudEditor } from './hud-editor.mjs?v=4';
 import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=3';
@@ -345,11 +345,11 @@ async function start() {
         delete personal.cameraPresets;
       },
     }, exploration.signal);
-    const characterEditor = mountCharacterPanel(ui.world, exploration.signal, published.character);
+    const canPublish = active.user.emailVerified === true && active.user.email === DEVELOPER_EMAIL;
+    const publication = canPublish ? createDeveloperPublication(db, data) : undefined;
+    const characterEditor = mountCharacterPanel(ui.world, exploration.signal, published.character, publication);
     const combat = mountCombatPanel(ui.world, exploration.signal, published.combat, personal.combat,
       next => { personal.combat = next; });
-    const canPublish = active.user.emailVerified === true && active.user.email === DEVELOPER_EMAIL;
-    const publicationRef = ref(db, 'developerConfigPublication');
     mountDeveloperConfigPanel(ui.world, exploration.signal, () => ({
       game: parseSettings(settings),
       camera: parseCamera(getCamera()),
@@ -358,10 +358,7 @@ async function start() {
       hud: hud.snapshot(),
       combat: combat.snapshot(),
       character: characterEditor.snapshot(),
-    }), canPublish ? {
-      submit: entry => set(publicationRef, entry),
-      latest: async () => (await get(ref(db, 'developerConfigPublication/id'))).val(),
-    } : undefined);
+    }), publication);
     mountDeveloperTabs(ui.world, exploration.signal);
     import('./explore.mjs?v=21').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;

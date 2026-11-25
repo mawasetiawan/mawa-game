@@ -1,3 +1,4 @@
+import { characterRepository, rawCharacterRoot, packageName, squareThumbnail, validThumbnail, fetchCharacterCard } from './character-gallery.mjs';
 import { horizontalRootMotion, rootMotionOptions } from './root-motion.mjs';
 import { packCharacter, resampleCharacter, unpackCharacter } from './character-package.mjs';
 import { attackSlot, combatActions, comboLimit, detectAnimations, loopsByDefault } from './animation-slots.mjs';
@@ -26,7 +27,6 @@ function animationClip(asset, slot) {
   return clip?.tracks?.length && Number.isFinite(clip.duration) && clip.duration > 0 ? clip : undefined;
 }
 const mib = 1024 * 1024;
-const packageName = /^[a-z0-9-]+\.character\.json(?:\.gz)?$/;
 const maxBytes = 32 * mib;
 const githubWebLimit = 25 * mib;
 const formatSize = bytes => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(bytes / mib) + ' MiB';
@@ -143,46 +143,118 @@ function createCharacterView(THREE, scene) {
   };
 }
 
-export function mountCharacterPanel(world, signal, preset) {
+export function mountCharacterPanel(world, signal, preset, publication) {
   const section = document.createElement('details');
   const title = document.createElement('summary');
   title.textContent = 'Edit Karakter';
-  const savedList = document.createElement('select');
-  savedList.setAttribute('aria-label', 'Karakter tersimpan');
-  const savedLabel = document.createElement('label');
-  savedLabel.append('Karakter tersimpan', savedList);
-  const savedActions = document.createElement('div');
-  savedActions.className = 'camera-buttons';
-  section.append(title, savedLabel, savedActions);
+  const gallery = document.createElement('div');
+  const count = Object.assign(document.createElement('h3'), { textContent: 'Karakter GitHub' });
+  const cards = Object.assign(document.createElement('ul'), { className: 'character-cards' });
+  const locals = Object.assign(document.createElement('ul'), { className: 'character-cards', hidden: true });
+  locals.setAttribute('aria-label', 'Paket lokal');
+  const galleryStatus = Object.assign(document.createElement('p'), { role: 'status' });
+  const savedActions = Object.assign(document.createElement('div'), { className: 'camera-buttons' });
+  const upload = Object.assign(document.createElement('a'), {
+    href: characterRepository + '/upload/main/docs/characters', target: '_blank',
+    rel: 'noopener noreferrer', textContent: 'Upload ke GitHub',
+  });
+  const refresh = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Muat Ulang Daftar' });
+  savedActions.append(refresh, upload);
+  gallery.append(count, savedActions, cards, locals, galleryStatus);
+  section.append(title, gallery);
   const saved = new Map();
-  const owner = 'mawasetiawan/mawa-game';
-  const upload = document.createElement('a');
-  upload.href = 'https://github.com/' + owner + '/upload/main/docs/characters';
-  upload.target = '_blank';
-  upload.rel = 'noopener noreferrer';
-  upload.textContent = 'Upload ke GitHub';
-  savedActions.append(upload);
-  const use = document.createElement('button');
-  use.type = 'button';
-  use.textContent = 'Use Character';
-  use.disabled = true;
-  savedActions.prepend(use);
-  savedList.add(new Option('Pilih karakter tersimpan', ''));
-  savedList.addEventListener('change', () => { use.disabled = !savedList.value || pending || !runtime; }, { signal });
-  function listCharacter(id, name, payload) {
-    if (!saved.has(id)) savedList.add(new Option(name, id));
-    saved.set(id, payload);
+  const published = new Map();
+  let listEpoch = 0, deletePending = false;
+
+  function displayName(id) { return id.replace(/\.character\.json(?:\.gz)?$/, '').replaceAll('-', ' '); }
+
+  function renderCards() {
+    count.textContent = 'Karakter GitHub (' + published.size + ')';
+    cards.replaceChildren(...[...published].map(([id, item]) => makeCard(id, item, true)));
+    const local = [...saved].filter(([id, entry]) => entry && !published.has(id));
+    locals.hidden = !local.length;
+    locals.replaceChildren(...local.map(([id, item]) => makeCard(id, item, false)));
   }
-  fetch('https://api.github.com/repos/' + owner + '/contents/docs/characters', { signal })
-    .then(response => response.ok ? response.json() : [])
-    .then(files => {
-      for (const file of Array.isArray(files) ? files : []) {
-        if (file.type === 'file' && packageName.test(file.name)) {
-          if (saved.has(file.name)) continue;
-          listCharacter(file.name, file.name.replace(/\.character\.json(?:\.gz)?$/, '').replaceAll('-', ' '), null);
+
+  function makeCard(id, item, online) {
+    const name = item.name || displayName(id);
+    const thumbnail = Object.assign(document.createElement(validThumbnail(item.thumbnail) ? 'img' : 'span'), {
+      className: 'character-card-thumb',
+    });
+    if (thumbnail.tagName === 'IMG') { thumbnail.alt = ''; thumbnail.src = item.thumbnail; }
+    else { thumbnail.textContent = name.slice(0, 1).toUpperCase(); thumbnail.setAttribute('aria-hidden', 'true'); }
+    const row = document.createElement('li');
+    const pick = Object.assign(document.createElement('button'), {
+      type: 'button', className: 'character-card-pick', disabled: pending || !runtime,
+    });
+    pick.setAttribute('aria-pressed', String(library.get(current).packageId === id));
+    pick.append(thumbnail, Object.assign(document.createElement('span'), { textContent: name }));
+    if (!online) pick.append(Object.assign(document.createElement('small'), { textContent: 'Lokal' }));
+    pick.addEventListener('click', () => void loadSaved(id, preset?.package === id ? preset : undefined), { signal });
+    row.append(pick);
+    if (online && publication) {
+      const remove = Object.assign(document.createElement('button'), {
+        type: 'button', textContent: 'Hapus', disabled: deletePending || preset?.package === id,
+      });
+      remove.setAttribute('aria-label', 'Hapus ' + name + ' dari GitHub');
+      if (preset?.package === id) remove.title = 'Paket ini masih menjadi karakter default.';
+      remove.addEventListener('click', async () => {
+        if (deletePending || !window.confirm('Hapus paket ' + name + ' dari GitHub?')) return;
+        deletePending = true;
+        galleryStatus.textContent = 'Mengirim permintaan hapus…';
+        renderCards();
+        try {
+          const request = await publication.remove(id, item.sha);
+          galleryStatus.textContent = 'Menunggu GitHub Actions menghapus paket…';
+          const receipt = await publication.wait(request, signal);
+          if (!receipt) { galleryStatus.textContent = 'Penghapusan masih diproses. Periksa GitHub Actions.'; return; }
+          if (receipt.status === 'active-character') throw Error('Karakter ini masih menjadi default. Ubah dan publikasikan default sebelum menghapus.');
+          if (receipt.status === 'asset-changed') throw Error('File berubah setelah daftar dimuat. Muat ulang daftar sebelum menghapus.');
+          if (receipt.status !== 'deleted') throw Error('Penghapusan belum terkonfirmasi.');
+          published.delete(id);
+          saved.delete(id);
+          remotePackages.delete(id);
+          remotePackages.delete(id + '@' + item.sha);
+          galleryStatus.textContent = name + ' dihapus dari GitHub.';
+        } catch (error) {
+          if (!signal.aborted) galleryStatus.textContent = error.message;
+        } finally {
+          deletePending = false;
+          if (!signal.aborted) renderCards();
         }
+      }, { signal });
+      row.append(remove);
+    }
+    return row;
+  }
+
+  async function refreshCards() {
+    const epoch = ++listEpoch;
+    refresh.disabled = true;
+    try {
+      const response = await fetch('https://api.github.com/repos/mawasetiawan/mawa-game/contents/docs/characters', { signal, cache: 'no-cache' });
+      if (!response.ok) throw Error('Daftar karakter GitHub belum bisa dimuat.');
+      const files = await response.json();
+      if (signal.aborted || epoch !== listEpoch || !Array.isArray(files)) return;
+      const previous = new Map(published);
+      published.clear();
+      for (const file of files) if (file.type === 'file' && packageName.test(file.name) && /^[a-f0-9]{40}$/.test(file.sha)) {
+        const known = previous.get(file.name);
+        published.set(file.name, known?.sha === file.sha ? known : { sha: file.sha });
       }
-    }).catch(() => {});
+      renderCards();
+      const entries = [...published].filter(([, item]) => !item.name);
+      for (let i = 0; i < entries.length && epoch === listEpoch && !signal.aborted; i += 4) {
+        await Promise.all(entries.slice(i, i + 4).map(async ([id, item]) => {
+          try { Object.assign(item, await fetchCharacterCard(id, item.sha, signal)); } catch {}
+        }));
+        if (!signal.aborted && epoch === listEpoch) renderCards();
+      }
+    } catch (error) {
+      if (!signal.aborted) galleryStatus.textContent = error.message;
+    } finally { if (!signal.aborted && epoch === listEpoch) refresh.disabled = false; }
+  }
+
   const edit = document.createElement('details');
   const editTitle = document.createElement('summary');
   editTitle.textContent = 'Edit Karakter';
@@ -200,6 +272,7 @@ export function mountCharacterPanel(world, signal, preset) {
   const library = new Map([['capsule', { name: 'Capsule bawaan' }]]);
   let current = 'capsule', serial = 0, runtime, preview = '', pending = false, exporting = false;
   const stateInputs = new Map();
+  let draftThumbnail = '';
   let draft;
   const collection = document.createElement('div');
   collection.className = 'camera-buttons';
@@ -248,6 +321,7 @@ export function mountCharacterPanel(world, signal, preset) {
     const asset = library.get(current);
     const name = nameField.value.trim();
     if (!asset?.source || !name) { status.textContent = 'Isi nama karakter terlebih dahulu.'; return; }
+    const thumbnail = draftThumbnail;
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'karakter';
     exporting = save.disabled = true;
     sizeWarning.hidden = false;
@@ -263,7 +337,7 @@ export function mountCharacterPanel(world, signal, preset) {
         reader.readAsDataURL(new Blob([sourceBytes]));
       });
       if (signal.aborted) return;
-      const payload = { version: 1, name, source, options: { ...asset.options }, mapping: { ...asset.mapping }, loops: { ...asset.loops },
+      const payload = { version: 1, name, thumbnail, source, options: { ...asset.options }, mapping: { ...asset.mapping }, loops: { ...asset.loops },
         rootMotion: asset.rootMotion, extra: asset.clips.slice(asset.embeddedCount).map(clip => runtime.serializeClip(clip)) };
       const { file, suffix, rawSize } = await packCharacter(payload);
       if (signal.aborted) return;
@@ -275,9 +349,10 @@ export function mountCharacterPanel(world, signal, preset) {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       // A locally exported package becomes shareable once it is available in the repository.
       asset.packageId = id;
-      listCharacter(id, name, payload);
-      savedList.value = id;
-      use.disabled = false;
+      asset.name = name;
+      asset.thumbnail = thumbnail;
+      saved.set(id, payload);
+      renderCards();
       status.textContent = (file.size < rawSize ? formatSize(rawSize) + ' → ' + formatSize(file.size) + '. ' : formatSize(file.size) + '. ') +
         (file.size > githubWebLimit ? 'Paket diunduh untuk penggunaan lokal.' : 'Paket siap diunggah lewat browser GitHub.');
     } catch (error) {
@@ -294,23 +369,57 @@ export function mountCharacterPanel(world, signal, preset) {
   nameField.maxLength = 60;
   nameField.placeholder = 'Nama karakter';
   nameField.setAttribute('aria-label', 'Nama karakter');
-  controls.append(nameField);
-
-  use.addEventListener('click', () => void loadSaved(savedList.value), { signal });
+  const nameLabel = document.createElement('label');
+  nameLabel.append('Nama karakter', nameField);
+  const thumbnailLabel = document.createElement('label');
+  const thumbnailInput = Object.assign(document.createElement('input'), {
+    type: 'file', accept: 'image/png,image/jpeg,image/webp',
+  });
+  thumbnailLabel.append('Thumbnail 1:1', thumbnailInput);
+  const thumbnailPreview = Object.assign(document.createElement('img'), {
+    className: 'character-card-thumb', alt: 'Preview thumbnail 1:1', hidden: true,
+  });
+  function showThumbnail() {
+    thumbnailPreview.hidden = !draftThumbnail;
+    if (draftThumbnail) thumbnailPreview.src = draftThumbnail;
+    else thumbnailPreview.removeAttribute('src');
+  }
+  thumbnailInput.addEventListener('change', async () => {
+    const file = thumbnailInput.files?.[0];
+    if (!file) return;
+    const asset = library.get(current);
+    save.disabled = thumbnailInput.disabled = true;
+    try {
+      const thumbnail = await squareThumbnail(file);
+      if (!signal.aborted && library.get(current) === asset) {
+        draftThumbnail = thumbnail;
+        showThumbnail();
+      }
+    } catch (error) { if (!signal.aborted) status.textContent = error.message; }
+    finally {
+      thumbnailInput.value = '';
+      thumbnailInput.disabled = false;
+      if (!signal.aborted) save.disabled = pending || exporting || !library.get(current)?.scene;
+    }
+  }, { signal });
+  controls.append(nameLabel, thumbnailLabel, thumbnailPreview);
+  refresh.addEventListener('click', () => void refreshCards(), { signal });
   const remotePackages = new Map();
   function fetchPackage(id) {
-    if (!remotePackages.has(id)) {
+    const sha = published.get(id)?.sha;
+    const key = sha ? id + '@' + sha : id;
+    if (!remotePackages.has(key)) {
       if (remotePackages.size >= 12) remotePackages.delete(remotePackages.keys().next().value);
       const promise = (async () => {
-        const url = 'https://raw.githubusercontent.com/' + owner + '/main/docs/characters/' + encodeURIComponent(id);
+        const url = rawCharacterRoot + 'docs/characters/' + encodeURIComponent(id) + (sha ? '?blob=' + sha : '');
         const response = await fetch(url, { signal });
         if (!response.ok) throw Error('Karakter belum bisa dimuat dari GitHub.');
         return unpackCharacter(await response.blob());
       })();
-      remotePackages.set(id, promise);
-      void promise.catch(() => { if (remotePackages.get(id) === promise) remotePackages.delete(id); });
+      remotePackages.set(key, promise);
+      void promise.catch(() => { if (remotePackages.get(key) === promise) remotePackages.delete(key); });
     }
-    return remotePackages.get(id);
+    return remotePackages.get(key);
   }
 
   async function buildAsset(id, data, overrides) {
@@ -324,6 +433,7 @@ export function mountCharacterPanel(world, signal, preset) {
       next.packageId = id;
       next.rootMotion = rootMotionOptions(overrides?.rootMotion ?? data.rootMotion);
       next.name = String(data.name ?? id).slice(0,60);
+      next.thumbnail = validThumbnail(data.thumbnail) ? data.thumbnail : '';
       for (const [key, field] of Object.entries(settings)) {
         const value = overrides?.options?.[key] ?? data.options?.[key];
         if (Number.isFinite(value) && value >= Number(field.min) && value <= Number(field.max)) next.options[key] = value;
@@ -347,19 +457,32 @@ export function mountCharacterPanel(world, signal, preset) {
   }
 
   async function loadSaved(id, overrides) {
-    if (!runtime || pending || library.size >= 6 || !id) return;
+    if (!runtime || pending || !id) return;
+    const sha = published.get(id)?.sha;
+    for (const [key, asset] of library) {
+      if (asset.packageId === id && asset.packageSha === sha) {
+        current = model.value = key;
+        render();
+        return;
+      }
+    }
+    if (library.size >= 6) {
+      galleryStatus.textContent = 'Hapus karakter yang tidak dipakai dari sesi sebelum memuat paket lain.';
+      return;
+    }
     pending = true;
     render();
     try {
-      const data = saved.get(id) ?? await fetchPackage(id);
+      const data = published.has(id) ? await fetchPackage(id) : saved.get(id) ?? await fetchPackage(id);
       const next = await buildAsset(id, data, overrides);
       if (!next) return;
+      next.packageSha = sha;
       current = String(++serial);
       library.set(current, next);
       model.add(new Option(next.name, current));
       model.value = current;
-      status.textContent = 'Karakter dipakai.';
-    } catch(error) { if (!signal.aborted) status.textContent = error.message; }
+      galleryStatus.textContent = next.name + ' dipakai oleh pemain.';
+    } catch(error) { if (!signal.aborted) galleryStatus.textContent = error.message; }
     finally { pending = false; if (!signal.aborted) render(); }
   }
   const settings = Object.fromEntries([
@@ -471,8 +594,10 @@ export function mountCharacterPanel(world, signal, preset) {
     remove.disabled = pending || !asset.scene;
     model.disabled = pending;
     save.disabled = pending || exporting || !asset.scene;
-    use.disabled = pending || !runtime || !savedList.value || library.size >= 6;
     nameField.value = asset.name ?? '';
+    draftThumbnail = asset.thumbnail ?? '';
+    showThumbnail();
+    renderCards();
     showSizeWarning(0);
     preview = '';
     if (!asset.scene) return;
@@ -541,11 +666,12 @@ export function mountCharacterPanel(world, signal, preset) {
   meshFile.addEventListener('change', () => void load(meshFile, false), { signal });
   clipsFile.addEventListener('change', () => void load(clipsFile, true), { signal });
   render();
+  void refreshCards();
 
   return {
     networkState() {
-      const id = preset?.package;
-      return typeof id === 'string' && packageName.test(id) ? { id } : undefined;
+      const id = library.get(current).packageId;
+      return id && (published.has(id) || id === preset?.package) ? { id } : undefined;
     },
     createPeer(THREE, scene) {
       const view = createCharacterView(THREE, scene);
@@ -680,8 +806,6 @@ export function mountCharacterPanel(world, signal, preset) {
       };
       render();
       if (typeof preset?.package === 'string' && packageName.test(preset.package)) {
-        if (!saved.has(preset.package)) listCharacter(preset.package, preset.package.replace(/\.character\.json(?:\.gz)?$/, ''), null);
-        savedList.value = preset.package;
         void loadSaved(preset.package, preset);
       }
       signal.addEventListener('abort', () => {

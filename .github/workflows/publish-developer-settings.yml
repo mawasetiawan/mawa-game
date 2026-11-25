@@ -28,11 +28,11 @@ jobs:
             git fetch --quiet origin main
             git reset --hard origin/main
             node .github/scripts/publish-developer-settings.mjs
-            if [ -z "$(git status --porcelain -- docs/developer-settings.json .github/developer-settings-publication.json)" ]; then
+            if [ -z "$(git status --porcelain -- docs/developer-settings.json .github/developer-settings-publication.json docs/characters)" ]; then
               exit 0
             fi
-            git add -- docs/developer-settings.json .github/developer-settings-publication.json
-            git commit -m 'Publish Developer settings'
+            git add -A -- docs/developer-settings.json .github/developer-settings-publication.json docs/characters
+            git commit -m 'Apply Developer publication request'
             if git push origin HEAD:main; then exit 0; fi
           done
           exit 1

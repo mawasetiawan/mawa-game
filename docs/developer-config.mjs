@@ -36,6 +36,57 @@ async function checkPackage(character) {
   if (!response.ok) throw Error('Upload paket karakter yang dipilih ke docs/characters sebelum Save All Setting.');
 }
 
+async function readReceipt(signal) {
+  const response = await fetch(raw + '.github/developer-settings-publication.json?check=' + Math.floor(Date.now() / 15_000),
+    { signal, cache: 'no-cache' });
+  if (response.status === 404) return null;
+  if (!response.ok) throw Error('Status publikasi GitHub belum bisa dibaca.');
+  return response.json();
+}
+
+export function createDeveloperPublication(db, data) {
+  const { ref, get, runTransaction } = data;
+  const queue = ref(db, 'developerConfigPublication');
+  async function submit(entry) {
+    const snapshot = await get(queue);
+    const previous = snapshot.val();
+    if (previous?.id) {
+      const receipt = await readReceipt(AbortSignal.timeout(6000));
+      if (receipt?.id !== previous.id) throw Error('Masih ada permintaan menunggu GitHub Actions. Coba lagi setelah selesai.');
+    }
+    const result = await runTransaction(queue, current => current === null || current.id === previous?.id ? entry : undefined,
+      { applyLocally: false });
+    if (!result.committed) throw Error('Ada permintaan publikasi lain yang baru masuk.');
+  }
+  return {
+    submit,
+    async latest() {
+      const current = (await get(queue)).val();
+      if (!current) return null;
+      return JSON.parse(current.payload).kind === 'delete-character' ? null : current.id;
+    },
+    async remove(name, sha) {
+      const id = crypto.randomUUID().replaceAll('-', '');
+      await submit({ id, payload: JSON.stringify({ version: 1, kind: 'delete-character', publicationId: id, package: name, sha }) });
+      return id;
+    },
+    async wait(id, signal) {
+      for (let i = 0; i < 45 && !signal.aborted; i++) {
+        try {
+          const receipt = await readReceipt(AbortSignal.timeout(6000));
+          if (receipt?.id === id) return receipt;
+        } catch {}
+        if (!signal.aborted && i < 44) await new Promise(resolve => {
+          const done = () => { clearTimeout(timer); signal.removeEventListener('abort', done); resolve(); };
+          const timer = setTimeout(done, 20_000);
+          signal.addEventListener('abort', done, { once: true });
+        });
+      }
+      return null;
+    },
+  };
+}
+
 export function mountDeveloperConfigPanel(world, signal, snapshot, publication) {
   const section = document.createElement('details');
   const summary = Object.assign(document.createElement('summary'), { textContent: 'Konfigurasi GitHub' });
