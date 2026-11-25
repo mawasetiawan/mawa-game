@@ -1,6 +1,6 @@
 import { loadDeveloperConfig, mountDeveloperConfigPanel, createDeveloperPublication } from './developer-config.mjs?v=5';
 import { mountCombatPanel } from './combat.mjs?v=9';
-import { mountCharacterPanel } from './character-editor.mjs?v=15';
+import { mountCharacterPanel } from './character-editor.mjs?v=16';
 import { mountCameraCuePanel } from './camera-cues.mjs?v=3';
 import { mountHudEditor } from './hud-editor.mjs?v=4';
 import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=3';

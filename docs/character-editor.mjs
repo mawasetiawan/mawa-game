@@ -29,6 +29,7 @@ function animationClip(asset, slot) {
 const mib = 1024 * 1024;
 const maxBytes = 32 * mib;
 const githubWebLimit = 25 * mib;
+const whiteTexture = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR2YAAAAASUVORK5CYII=';
 const formatSize = bytes => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(bytes / mib) + ' MiB';
 
 export function characterAnimationState(actor) {
@@ -426,14 +427,14 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   function fileInput() {
     const item = document.createElement('input');
     item.type = 'file';
-    item.accept = '.glb,model/gltf-binary';
+    item.accept = '.glb,.fbx,model/gltf-binary';
     item.hidden = true;
     section.append(item);
     return item;
   }
   const meshFile = fileInput(), clipsFile = fileInput();
-  const importMesh = button('Impor Mesh .glb', () => meshFile.click());
-  const importClips = button('Impor Animasi .glb', () => clipsFile.click());
+  const importMesh = button('Impor Mesh GLB / FBX', () => meshFile.click());
+  const importClips = button('Impor Animasi GLB / FBX', () => clipsFile.click());
   const remove = button('Lepas dari editor', () => {
     const asset = library.get(current);
     if (!asset.scene) return;
@@ -466,10 +467,11 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'karakter';
     exporting = save.disabled = true;
     sizeWarning.hidden = false;
-    sizeWarning.textContent = 'Mengoptimalkan animasi dan mengompres paket…';
+    const optimize = asset.sourceFormat === 'glb' && asset.embeddedCount > 0;
+    sizeWarning.textContent = optimize ? 'Mengoptimalkan animasi dan mengompres paket…' : 'Mengompres paket…';
     try {
       // Preserve the source bytes if a library is unavailable or the GLB uses an unsupported extension.
-      const sourceBytes = asset.embeddedCount ? await resampleCharacter(asset.source).catch(() => asset.source) : asset.source;
+      const sourceBytes = optimize ? await resampleCharacter(asset.source).catch(() => asset.source) : asset.source;
       if (signal.aborted) return;
       const reader = new FileReader();
       const source = await new Promise((resolve,reject) => {
@@ -478,7 +480,8 @@ export function mountCharacterPanel(world, signal, preset, publication) {
         reader.readAsDataURL(new Blob([sourceBytes]));
       });
       if (signal.aborted) return;
-      const payload = { version: 1, name, thumbnail, source, options: { ...asset.options }, mapping: { ...asset.mapping }, loops: { ...asset.loops },
+      const payload = { version: 1, name, thumbnail, source, sourceFormat: asset.sourceFormat,
+        options: { ...asset.options }, mapping: { ...asset.mapping }, loops: { ...asset.loops },
         rootMotion: asset.rootMotion, extra: asset.clips.slice(asset.embeddedCount).map(clip => runtime.serializeClip(clip)) };
       const { file, suffix, rawSize } = await packCharacter(payload);
       if (signal.aborted) return;
@@ -591,11 +594,13 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   async function buildAsset(id, data, overrides) {
     if (data.version !== 1 || typeof data.source !== 'string' || data.source.length > Math.ceil(maxBytes / 3) * 4) throw Error('Paket karakter tidak valid.');
     const buffer = Uint8Array.from(atob(data.source), character => character.charCodeAt(0)).buffer;
-    const payload = await runtime.read(buffer);
+    const sourceFormat = data.sourceFormat === undefined ? 'glb' : data.sourceFormat;
+    const payload = await runtime.read(buffer, sourceFormat);
     if (signal.aborted) { disposeModel(payload.scene); return null; }
     try {
       const next = runtime.prepare(payload);
       next.source = buffer;
+      next.sourceFormat = sourceFormat;
       next.packageId = id;
       next.rootMotion = rootMotionOptions(overrides?.rootMotion ?? data.rootMotion);
       next.name = String(data.name ?? id).slice(0,60);
@@ -801,9 +806,11 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     status.textContent = 'Memuat ' + file.name + '…';
     let payload;
     try {
-      if (!/\.glb$/i.test(file.name) || file.size > maxBytes || file.size < 12) throw Error('Pilih GLB valid berukuran maksimal 32 MiB.');
+      const extension = /\.(glb|fbx)$/i.exec(file.name);
+      if (!extension || file.size > maxBytes || file.size < 12) throw Error('Pilih file GLB atau FBX valid berukuran maksimal 32 MiB.');
+      const sourceFormat = extension[1].toLowerCase();
       const source = await file.arrayBuffer();
-      payload = await runtime.read(source);
+      payload = await runtime.read(source, sourceFormat);
       if (signal.aborted) return;
       if (animationsOnly) {
         const clips = payload.animations.filter(clip => runtime.compatible(clip, asset.scene));
@@ -816,17 +823,19 @@ export function mountCharacterPanel(world, signal, preset, publication) {
       } else {
         const next = runtime.prepare(payload);
         next.source = source;
-        next.name = file.name.replace(/\.glb$/i, '');
+        next.sourceFormat = sourceFormat;
+        next.name = file.name.slice(0, -extension[0].length);
         current = String(++serial);
         library.set(current,next);
         model.add(new Option(file.name, current));
         model.value = current;
+        status.textContent = Object.keys(next.detected).length + ' slot terdeteksi dari nama klip.' +
+          (payload.externalTextures ? ' Tekstur eksternal dilewati. Sematkan tekstur saat ekspor FBX agar tampil di game.' : '');
         payload = null;
-        status.textContent = Object.keys(next.detected).length + ' slot terdeteksi dari nama klip.';
       }
       usingPlayer = false;
     } catch (error) {
-      if (!signal.aborted) status.textContent = error.message || 'GLB gagal dimuat.';
+      if (!signal.aborted) status.textContent = error.message || 'File karakter gagal dimuat.';
     } finally {
       if (payload) disposeModel(payload.scene);
       pending = false;
@@ -910,7 +919,30 @@ export function mountCharacterPanel(world, signal, preset, publication) {
     attach(THREE, scene) {
       const view = createCharacterView(THREE, scene);
       runtime = {
-        async read(buffer) {
+        async read(buffer, format) {
+          if (buffer.byteLength < 12 || buffer.byteLength > maxBytes) throw Error('Ukuran file karakter tidak valid.');
+          if (format === 'fbx') {
+            const { FBXLoader } = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/FBXLoader.js');
+            const manager = new THREE.LoadingManager();
+            const blobs = new Set();
+            let externalTextures = false;
+            // FBXLoader creates blob URLs for embedded binary images. Loaded images remain available after revocation.
+            manager.onLoad = () => { for (const url of blobs) URL.revokeObjectURL(url); blobs.clear(); };
+            manager.setURLModifier(url => {
+              if (/^blob:/i.test(url)) { blobs.add(url); return url; }
+              if (/^data:image\//i.test(url)) return url;
+              externalTextures = true;
+              return whiteTexture;
+            });
+            try {
+              const scene = new FBXLoader(manager).parse(buffer, '');
+              return { scene, animations: scene.animations, externalTextures };
+            } catch (error) {
+              manager.onLoad();
+              throw Error('FBX gagal dibaca. Ekspor ulang FBX dari Blender, Maya, atau Unreal.', { cause: error });
+            }
+          }
+          if (format !== 'glb') throw Error('Format paket karakter harus GLB atau FBX.');
           if (new DataView(buffer).getUint32(0,true) !== 0x46546c67) throw Error('File ini bukan GLB.');
           const { GLTFLoader } = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js');
           const manager = new THREE.LoadingManager();
@@ -920,7 +952,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
           });
           return new GLTFLoader(manager).parseAsync(buffer,'');
         },
-        parseClip: THREE.AnimationClip.parse,
+        parseClip(data) { return THREE.AnimationClip.parse(data); },
         serializeClip(clip) {
           const copy = clip.clone();
           for (const track of copy.tracks) {
@@ -961,7 +993,7 @@ export function mountCharacterPanel(world, signal, preset, publication) {
           payload.scene.traverse(node => { if (node.isMesh) meshCount++; });
           const bounds = new THREE.Box3().setFromObject(payload.scene);
           const height = bounds.max.y - bounds.min.y;
-          if (!meshCount || !Number.isFinite(height) || height <= 0) throw Error('GLB perlu berisi mesh 3D.');
+          if (!meshCount || !Number.isFinite(height) || height <= 0) throw Error('File karakter perlu berisi mesh 3D.');
           const center = bounds.getCenter(new THREE.Vector3());
           const fit = new THREE.Group();
           fit.scale.setScalar(1.8 / height);
