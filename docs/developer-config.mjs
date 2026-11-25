@@ -47,16 +47,23 @@ async function readReceipt(signal) {
 export function createDeveloperPublication(db, data) {
   const { ref, get, runTransaction } = data;
   const queue = ref(db, 'developerConfigPublication');
-  async function submit(entry) {
+  async function submit(entry, deletion) {
     const snapshot = await get(queue);
     const previous = snapshot.val();
     if (previous?.id) {
       const receipt = await readReceipt(AbortSignal.timeout(6000));
-      if (receipt?.id !== previous.id) throw Error('Masih ada permintaan menunggu GitHub Actions. Coba lagi setelah selesai.');
+      if (receipt?.id !== previous.id) {
+        const pending = JSON.parse(previous.payload);
+        if (deletion && pending.kind === 'delete-character' && pending.package === deletion.name && pending.sha === deletion.sha) {
+          return previous.id;
+        }
+        throw Error('Permintaan lain sedang diproses di GitHub Actions. Coba lagi setelah selesai.');
+      }
     }
     const result = await runTransaction(queue, current => current === null || current.id === previous?.id ? entry : undefined,
       { applyLocally: false });
     if (!result.committed) throw Error('Ada permintaan publikasi lain yang baru masuk.');
+    return entry.id;
   }
   return {
     submit,
@@ -67,8 +74,8 @@ export function createDeveloperPublication(db, data) {
     },
     async remove(name, sha) {
       const id = crypto.randomUUID().replaceAll('-', '');
-      await submit({ id, payload: JSON.stringify({ version: 1, kind: 'delete-character', publicationId: id, package: name, sha }) });
-      return id;
+      return submit({ id, payload: JSON.stringify({ version: 1, kind: 'delete-character', publicationId: id, package: name, sha }) },
+        { name, sha });
     },
     async wait(id, signal) {
       for (let i = 0; i < 45 && !signal.aborted; i++) {

@@ -159,7 +159,23 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   const cards = Object.assign(document.createElement('ul'), { className: 'character-cards' });
   const locals = Object.assign(document.createElement('ul'), { className: 'character-cards', hidden: true });
   locals.setAttribute('aria-label', 'Paket lokal');
-  const galleryStatus = Object.assign(document.createElement('p'), { role: 'status' });
+  const galleryStatus = Object.assign(document.createElement('p'), { className: 'character-gallery-status', role: 'status' });
+  const deleteDialog = Object.assign(document.createElement('dialog'), { className: 'actor-picker character-delete-dialog' });
+  const deleteTitle = Object.assign(document.createElement('h2'), { id: 'characterDeleteTitle', textContent: 'Hapus dari GitHub' });
+  deleteDialog.setAttribute('aria-labelledby', deleteTitle.id);
+  const deleteMessage = Object.assign(document.createElement('p'), { role: 'status' });
+  const deleteActions = document.createElement('footer');
+  const closeDelete = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Batal', autofocus: true });
+  const confirmDelete = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Hapus dari GitHub' });
+  const workflowLink = Object.assign(document.createElement('a'), {
+    href: characterRepository + '/actions/workflows/publish-developer-settings.yml', target: '_blank',
+    rel: 'noopener noreferrer', textContent: 'Buka GitHub Actions', hidden: true,
+  });
+  deleteActions.append(closeDelete, confirmDelete, workflowLink);
+  deleteDialog.append(deleteTitle, deleteMessage, deleteActions);
+  world.querySelector('.gameplay-hud').append(deleteDialog);
+  closeDelete.addEventListener('click', () => deleteDialog.close(), { signal });
+  signal.addEventListener('abort', () => deleteDialog.remove(), { once: true });
   const savedActions = Object.assign(document.createElement('div'), { className: 'camera-buttons' });
   const upload = Object.assign(document.createElement('a'), {
     href: characterRepository + '/upload/main/docs/characters', target: '_blank',
@@ -178,8 +194,64 @@ export function mountCharacterPanel(world, signal, preset, publication) {
   const published = new Map();
   let listEpoch = 0, deletePending = false, lastRefresh = 0;
   let playerAsset, usingPlayer = false, playerLoading = false;
+  let deleteTarget;
 
   function displayName(id) { return id.replace(/\.character\.json(?:\.gz)?$/, '').replaceAll('-', ' '); }
+
+  function showDeleteStatus(title, message, state) {
+    deleteTitle.textContent = title;
+    deleteMessage.textContent = galleryStatus.textContent = message;
+    deleteDialog.dataset.state = galleryStatus.dataset.state = state;
+  }
+
+  async function deleteCharacter() {
+    if (!publication || !deleteTarget || deletePending) return;
+    const { id, name, sha } = deleteTarget;
+    if (preset?.package === id || published.get(id)?.sha !== sha) {
+      showDeleteStatus('Paket berubah', 'Muat ulang daftar dan pilih paket yang akan dihapus.', 'error');
+      confirmDelete.hidden = true;
+      return;
+    }
+    deleteTarget = undefined;
+    deletePending = true;
+    confirmDelete.hidden = true;
+    closeDelete.textContent = 'Tutup';
+    showDeleteStatus('Mengirim permintaan', 'Mengirim permintaan hapus untuk ' + name + '…', 'pending');
+    renderCards();
+    try {
+      const request = await publication.remove(id, sha);
+      if (signal.aborted) return;
+      workflowLink.hidden = false;
+      showDeleteStatus('Menunggu GitHub Actions', 'Permintaan hapus ' + name + ' sudah diterima. Daftar diperbarui setelah GitHub mengonfirmasi.', 'pending');
+      const receipt = await publication.wait(request, signal);
+      if (signal.aborted) return;
+      if (!receipt) {
+        showDeleteStatus('Konfirmasi belum diterima', 'Permintaan masih menunggu GitHub Actions. Jika memilih Hapus lagi, game akan melanjutkan pengecekan permintaan yang sama.', 'pending');
+        return;
+      }
+      if (receipt.status === 'active-character') throw Error('Ubah karakter default dan publikasikan pengaturannya sebelum menghapus paket ini.');
+      if (receipt.status === 'asset-changed') throw Error('File berubah sejak daftar dimuat. Muat ulang daftar sebelum menghapusnya.');
+      if (receipt.status !== 'deleted') throw Error('GitHub belum mengonfirmasi penghapusan paket.');
+      published.delete(id);
+      saved.delete(id);
+      remotePackages.delete(id);
+      remotePackages.delete(id + '@' + sha);
+      renderCards();
+      workflowLink.hidden = true;
+      const confirmation = name + ' telah dihapus dari GitHub.';
+      showDeleteStatus('Karakter telah dihapus', confirmation + ' Memuat ulang daftar…', 'success');
+      const refreshed = await refreshCards({ deleted: { id, sha } });
+      if (!signal.aborted) showDeleteStatus('Karakter telah dihapus', confirmation + (refreshed ? ' Daftar sudah diperbarui.' : ' Daftar lengkap gagal dimuat. Gunakan Muat Ulang Daftar untuk mencoba lagi.'), 'success');
+    } catch (error) {
+      if (!signal.aborted) showDeleteStatus('Penghapusan belum berhasil', error.code === 'PERMISSION_DENIED' ?
+        'Firebase menolak permintaan. Masuk ulang dengan akun Google Game Master, lalu coba lagi.' : error.message || 'Permintaan gagal dikirim.', 'error');
+    } finally {
+      deletePending = false;
+      if (!signal.aborted) renderCards();
+    }
+  }
+
+  confirmDelete.addEventListener('click', () => void deleteCharacter(), { signal });
 
   function renderCards() {
     count.textContent = 'Karakter GitHub (' + published.size + ')';
@@ -267,49 +339,37 @@ export function mountCharacterPanel(world, signal, preset, publication) {
       remove.setAttribute('aria-label', 'Hapus ' + name + ' dari GitHub');
       if (isDefault) pick.append(Object.assign(document.createElement('small'), { textContent: 'Default' }));
       if (isDefault) remove.title = 'Paket ini masih menjadi karakter default.';
-      remove.addEventListener('click', async () => {
-        if (!publication || isDefault || deletePending || !window.confirm('Hapus paket ' + name + ' dari GitHub untuk semua pemain?')) return;
-        deletePending = true;
-        galleryStatus.textContent = 'Mengirim permintaan hapus…';
-        renderCards();
-        try {
-          const request = await publication.remove(id, item.sha);
-          galleryStatus.textContent = 'Menunggu GitHub Actions menghapus paket…';
-          const receipt = await publication.wait(request, signal);
-          if (!receipt) { galleryStatus.textContent = 'Penghapusan masih diproses. Periksa GitHub Actions.'; return; }
-          if (receipt.status === 'active-character') throw Error('Karakter ini masih menjadi default. Ubah dan publikasikan default sebelum menghapus.');
-          if (receipt.status === 'asset-changed') throw Error('File berubah setelah daftar dimuat. Muat ulang daftar sebelum menghapus.');
-          if (receipt.status !== 'deleted') throw Error('Penghapusan belum terkonfirmasi.');
-          published.delete(id);
-          saved.delete(id);
-          remotePackages.delete(id);
-          remotePackages.delete(id + '@' + item.sha);
-          galleryStatus.textContent = name + ' dihapus dari GitHub.';
-        } catch (error) {
-          if (!signal.aborted) galleryStatus.textContent = error.message;
-        } finally {
-          deletePending = false;
-          if (!signal.aborted) renderCards();
-        }
+      remove.addEventListener('click', () => {
+        if (!publication || isDefault || deletePending || deleteDialog.open) return;
+        deleteTarget = { id, name, sha: item.sha };
+        deleteTitle.textContent = 'Hapus dari GitHub';
+        deleteMessage.textContent = 'Hapus ' + name + ' dari daftar karakter semua pemain?';
+        delete deleteDialog.dataset.state;
+        workflowLink.hidden = true;
+        confirmDelete.hidden = false;
+        closeDelete.textContent = 'Batal';
+        deleteDialog.showModal();
       }, { signal });
       row.append(remove);
     }
     return row;
   }
 
-  async function refreshCards() {
-    if (refresh.disabled) return;
+  async function refreshCards({ deleted } = {}) {
+    if (refresh.disabled && !deleted) return;
     const epoch = ++listEpoch;
     refresh.disabled = playerRefresh.disabled = true;
     playerStatus.textContent = 'Memuat daftar karakter…';
     try {
-      const response = await fetch('https://api.github.com/repos/mawasetiawan/mawa-game/contents/docs/characters', { signal, cache: 'no-cache' });
+      const url = 'https://api.github.com/repos/mawasetiawan/mawa-game/contents/docs/characters';
+      const response = await fetch(deleted ? url + '?after=' + Date.now() : url, { signal, cache: 'no-store' });
       if (!response.ok) throw Error('Daftar karakter GitHub belum bisa dimuat.');
       const files = await response.json();
       if (signal.aborted || epoch !== listEpoch || !Array.isArray(files)) return;
       const previous = new Map(published);
       published.clear();
       for (const file of files) if (file.type === 'file' && packageName.test(file.name) && /^[a-f0-9]{40}$/.test(file.sha)) {
+        if (deleted?.id === file.name && deleted.sha === file.sha) continue;
         const known = previous.get(file.name);
         published.set(file.name, known?.sha === file.sha ? known : { sha: file.sha });
       }
@@ -325,8 +385,13 @@ export function mountCharacterPanel(world, signal, preset, publication) {
         lastRefresh = Date.now();
         if (!playerLoading) playerStatus.textContent = published.size ? '' : 'Belum ada karakter di GitHub.';
       }
+      return !signal.aborted && epoch === listEpoch;
     } catch (error) {
-      if (!signal.aborted) galleryStatus.textContent = playerStatus.textContent = error.message;
+      if (!signal.aborted && epoch === listEpoch) {
+        playerStatus.textContent = error.message;
+        if (!deleted && !deletePending) galleryStatus.textContent = error.message;
+      }
+      return false;
     } finally { if (!signal.aborted && epoch === listEpoch) refresh.disabled = playerRefresh.disabled = false; }
   }
 
