@@ -81,7 +81,6 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
   function press(id) {
     if (swing || !Object.hasOwn(settings.actions, id) || actor.hp === 0 || clock < stunUntil) return false;
     const stage = combo?.id === id && clock <= combo.until && combo.stage < settings.actions[id].count ? combo.stage + 1 : 1;
-    if (!canAnimate(attackSlot(id, stage))) return false;
     start(id, stage);
     return true;
   }
