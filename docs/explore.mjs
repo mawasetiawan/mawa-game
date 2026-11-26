@@ -1,7 +1,7 @@
 import { isWorldTextOrMenu, preventWorldDoubleTap } from './world-input.mjs';
 import { mountPcControls } from './pc-controls.mjs';
 import { createAttackAudio } from './combat-audio.mjs';
-import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=10';
+import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=11';
 import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs?v=3';
 import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=3';
 import { createCameraRig } from './camera-rig.mjs?v=pc';
