@@ -1,7 +1,7 @@
 import { isWorldTextOrMenu, preventWorldDoubleTap } from './world-input.mjs';
 import { mountPcControls } from './pc-controls.mjs';
 import { createAttackAudio } from './combat-audio.mjs';
-import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=12';
+import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=13';
 import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs?v=3';
 import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=3';
 import { createCameraRig } from './camera-rig.mjs?v=pc';
@@ -67,7 +67,7 @@ export async function mountExploration(world, signal, replication, settings, get
     slot => characterEditor?.attackMotion(slot),
     kind => playSound(combatPanel?.audio?.[kind]),
     () => (replication.preview ? combatConfig : combatPanel?.shared ?? combatConfig).actions, canAnimate,
-    () => characterEditor?.animationSpeed() ?? 1);
+    () => characterEditor?.animationSpeed() ?? 1, combatPanel?.recorder);
   const editing = () => world.hasAttribute('data-edit-hud') || world.hasAttribute('data-edit-spawn');
   const control = mountCombatHud(world, actions, signal, {
     press(id) { if (!editing() && combat.press(id)) previewFighting = true; },
@@ -314,9 +314,14 @@ export async function mountExploration(world, signal, replication, settings, get
     input.jump = jumpUntil >= now && actor.state === ActorState.GROUNDED && actor.dashLeft === 0 && !input.dash;
     if (input.jump) jumpUntil = 0;
     if (actor.hp > 0) stepMovement(actor, combat.movement(input), dt * combat.timeScale(), settings, canAnimate, characterEditor?.locomotionDelta);
-    input.jump = input.crouch = input.dash = false;
     actor.x = THREE.MathUtils.clamp(actor.x, -49, 49);
     actor.z = THREE.MathUtils.clamp(actor.z, -49, 49);
+    const character = characterEditor?.networkState();
+    if (input.jump || input.crouch || input.dash) combatPanel?.recorder?.log('actor.input', {
+      jump: input.jump, crouch: input.crouch, dash: input.dash, state: actor.state, gait: actor.gait,
+    });
+    combatPanel?.recorder?.sample(actor, input, replication.players, character?.id, replication.connected?.());
+    input.jump = input.crouch = input.dash = false;
     scale = THREE.MathUtils.lerp(scale, actor.stance === Stance.CROUCH ? 0.62 : 1, 1 - Math.exp(-18 * dt));
     const localHeight = actor.hp ? scale : .34;
     capsule.scale.y = localHeight;
@@ -329,7 +334,7 @@ export async function mountExploration(world, signal, replication, settings, get
       range.scale.setScalar(actor.range.radius);
       range.material.color.setHex(actor.attack ? 0xff9460 : 0xffce77);
     }
-    replication.publish(actor, now, characterEditor?.networkState());
+    replication.publish(actor, now, character);
     const blend = 1 - Math.exp(-24 * dt);
     for (const [id, pose] of replication.players) {
       let mesh = remoteCapsules.get(id);

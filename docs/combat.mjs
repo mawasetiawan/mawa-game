@@ -1,5 +1,6 @@
 import { attackAudioAccept, createAttackAudio, readAttackSound, soundData } from './combat-audio.mjs';
 import { attackSlot, combatActions, comboLimit } from './animation-slots.mjs';
+import { actorTrace, mountCombatRecorder } from './combat-troubleshoot.mjs';
 
 export const maxHealth = 100;
 const effects = ['none', 'stun', 'slow', 'airborne'];
@@ -47,16 +48,19 @@ const warpProgress = (elapsed, warp) => {
   return t * t * (3 - 2 * t);
 };
 
+function strikeCenter(origin, yaw) {
+  return { x: origin.x + Math.sin(yaw) * strikeOffset, z: origin.z + Math.cos(yaw) * strikeOffset,
+    y: origin.y + (origin.stance === 'crouch' || origin.crouch ? .62 : .92) };
+}
+
 export function touchesAttack(origin, target, attack) {
-  const x = origin.x + Math.sin(attack.yaw) * strikeOffset;
-  const z = origin.z + Math.cos(attack.yaw) * strikeOffset;
-  const y = origin.y + (origin.stance === 'crouch' || origin.crouch ? .62 : .92);
+  const { x, y, z } = strikeCenter(origin, attack.yaw);
   const height = target.stance === 'crouch' || target.crouch ? 1.12 : 1.8;
   const capsuleY = Math.max(target.y + bodyRadius, Math.min(target.y + height - bodyRadius, y));
   return Math.hypot(target.x - x, target.z - z, capsuleY - y) <= bodyRadius + strikeRadius;
 }
 
-export function createCombat(actor, settings, fallbackSpawn, animationDuration, onShake, onControlReset, identity = 'local', shakeEnabled, attackMotion, onAttack, sharedActions = () => settings.actions, canAnimate = () => true, animationSpeed = () => 1) {
+export function createCombat(actor, settings, fallbackSpawn, animationDuration, onShake, onControlReset, identity = 'local', shakeEnabled, attackMotion, onAttack, sharedActions = () => settings.actions, canAnimate = () => true, animationSpeed = () => 1, trace) {
   let clock = 0, serial = 0, swing, combo, respawnAt = 0;
   let stunUntil = 0, slowUntil = 0, graceUntil = 0, impactUntil = 0;
   const connections = new Map();
@@ -81,12 +85,24 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
     combo = null;
     onAttack?.(id);
     swings.set(serial, { kind: id, expires: clock + seconds / .45 + 1 });
+    if (trace?.active) trace.log('attack.started', { swing: serial, kind: id, stage, slot, seconds, clipDuration,
+      rootMotion: Boolean(swing.motion), reach: swing.reach, actor: actorTrace(actor) });
   }
 
   function press(id) {
-    if (swing || !Object.hasOwn(settings.actions, id) || actor.hp === 0 || clock < stunUntil) return false;
+    const blocked = swing ? 'swing_active' : !Object.hasOwn(settings.actions, id) ? 'unknown_attack' :
+      actor.hp === 0 ? 'dead' : clock < stunUntil ? 'stunned' : null;
+    if (blocked) {
+      trace?.log('attack.input_blocked', { kind: id, reason: blocked });
+      return false;
+    }
     const stage = combo?.id === id && clock <= combo.until && combo.stage < settings.actions[id].count ? combo.stage + 1 : 1;
-    if (!canAnimate(attackSlot(id, stage))) return false;
+    const slot = attackSlot(id, stage);
+    if (!canAnimate(slot)) {
+      trace?.log('attack.input_blocked', { kind: id, slot, reason: 'missing_animation' });
+      return false;
+    }
+    trace?.log('attack.input', { kind: id, slot });
     start(id, stage);
     return true;
   }
@@ -109,9 +125,18 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
     actor.warping = false;
   }
 
-  function receive(origin, attack) {
-    if (!actor.hp || clock < graceUntil || !touchesAttack(origin, actor, attack)) return false;
+  function receive(origin, attack, source) {
+    const reason = !actor.hp ? 'dead' : clock < graceUntil ? 'respawn_grace' :
+      !touchesAttack(origin, actor, attack) ? 'outside_hitbox' : null;
+    if (trace?.active) trace.once((source?.key ?? 'direct') + ':contact:' + reason, 'hit.checked', {
+      player: source?.player, swing: source?.swing, kind: attack.kind, accepted: !reason, reason,
+      hitbox: { ...strikeCenter(origin, attack.yaw), strikeRadius, bodyRadius }, target: actorTrace(actor),
+    });
+    if (reason) return false;
+    const previousHp = actor.hp;
     actor.hp = Math.max(0, actor.hp - attack.damage);
+    trace?.log('damage.received', { player: source?.player, swing: source?.swing, kind: attack.kind,
+      damage: previousHp - actor.hp, hpBefore: previousHp, hpAfter: actor.hp, effect: attack.effect });
     shake(attack.kind, attack.shake);
     if (actor.hp === 0) {
       actor.action = 'death';
@@ -139,14 +164,17 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
 
   function acquireTarget(players) {
     let distance = swing.reach;
-    let target;
-    for (const pose of players.values()) {
+    let target, targetId;
+    for (const [uid, pose] of players) {
       if (pose.hp === 0 || Math.abs(pose.y - swing.origin.y) > maxWarpHeight) continue;
       const gap = Math.hypot(pose.x - swing.origin.x, pose.z - swing.origin.z);
       if (gap > distance) continue;
       distance = gap;
       target = pose;
+      targetId = uid;
     }
+    if (trace?.active) trace.log('attack.target', { swing: swing.packet.id, player: target && trace.peer(targetId),
+      distance: target ? distance : undefined, reach: swing.reach, target: target && actorTrace(target) });
     swing.warp = null;
     if (!target || distance < .02) return;
     const dx = target.x - swing.origin.x;
@@ -183,6 +211,7 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
       const outgoing = swings.get(pose.impacts?.[identity]);
       if (!outgoing || outgoing.acknowledged) continue;
       outgoing.acknowledged = true;
+      trace?.log('damage.acknowledged', { swing: pose.impacts[identity], kind: outgoing.kind });
       shake(outgoing.kind, settings.actions[outgoing.kind]?.shake);
     }
     if (!actor.hp) {
@@ -192,16 +221,26 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
         gait: 'stop', state: 'grounded', hp: maxHealth, action: '', life: actor.life + 1 });
       stunUntil = slowUntil = 0;
       graceUntil = clock + 1;
+      if (trace?.active) trace.log('actor.respawned', { actor: actorTrace(actor) });
       onControlReset();
     }
     for (const [uid, pose] of players) {
       const attack = pose.attack;
-      if (!attack || pose.hp === 0 || now - pose.receivedAt > 280) continue;
+      if (!attack) continue;
+      const ageMs = Math.round(now - pose.receivedAt);
+      const source = trace?.active ? { player: trace.peer(uid), swing: attack.id,
+        key: 'incoming:' + uid + ':' + pose.connection + ':' + attack.id } : undefined;
+      if (source) trace.once(source.key, 'attack.observed', { player: source.player, swing: attack.id, kind: attack.kind, ageMs });
+      if (pose.hp === 0 || now - pose.receivedAt > 280) {
+        if (source) trace.once(source.key + ':discarded', 'attack.discarded', { player: source.player,
+          swing: attack.id, reason: pose.hp === 0 ? 'attacker_dead' : 'stale_snapshot', ageMs });
+        continue;
+      }
       const last = connections.get(uid);
-      if (last?.connection === pose.connection && last.id >= attack.id) continue;
+      if (last && last.connection === pose.connection && last.id >= attack.id) continue;
       const rules = sharedActions();
       if (!Object.hasOwn(rules, attack.kind)) continue;
-      if (receive(pose, { ...rules[attack.kind], kind: attack.kind, yaw: attack.yaw })) {
+      if (receive(pose, { ...rules[attack.kind], kind: attack.kind, yaw: attack.yaw }, source)) {
         connections.set(uid, { connection: pose.connection, id: attack.id });
         const impacts = { ...actor.impacts, [uid]: attack.id };
         actor.impacts = Object.fromEntries(Object.entries(impacts).slice(-8));
@@ -215,6 +254,7 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
     }
     if (swing && swing.elapsed >= swing.seconds) {
       const { id, stage } = swing;
+      trace?.log('attack.ended', { swing: swing.packet.id, kind: id, stage });
       if (swing.motion) applyRootMotion(swing.seconds);
       stopSwing();
       combo = { id, stage, until: clock + .55 };
@@ -244,6 +284,18 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
     // Range selects a target. Only the strike collider during the contact window deals damage.
     actor.attack = swing.elapsed >= contactStart && swing.elapsed <= Math.max(contactStart + .16, swing.seconds * .8) ?
       swing.packet : null;
+    if (actor.attack && trace?.active) {
+      const hitbox = { ...strikeCenter(actor, swing.packet.yaw), strikeRadius };
+      trace.once('hitbox:' + swing.packet.id, 'hitbox.active', {
+        swing: swing.packet.id, kind: swing.id, elapsed: swing.elapsed, actor: actorTrace(actor), hitbox,
+      });
+      for (const [uid, pose] of players) {
+        const overlap = touchesAttack(actor, pose, swing.packet);
+        trace.once('outgoing:' + swing.packet.id + ':' + uid + ':' + overlap, 'hit.local_overlap', {
+          swing: swing.packet.id, player: trace.peer(uid), overlap, hitbox, target: actorTrace(pose),
+        });
+      }
+    }
   }
 
   return {
@@ -267,6 +319,7 @@ export function mountCombatPanel(world, signal, preset, local, applyLocal) {
   const heading = document.createElement('summary');
   heading.textContent = 'Combat';
   section.append(heading);
+  const recorder = mountCombatRecorder(section, signal, world.querySelector('.game-version')?.textContent);
 
   function field(parent, title, type, getValue, setValue, limits = {}) {
     const label = document.createElement('label');
@@ -382,5 +435,5 @@ export function mountCombatPanel(world, signal, preset, local, applyLocal) {
   });
   section.append(status);
   world.querySelector('.developer-fields').append(section);
-  return { applied, shared, draft: settings, audio: appliedAudio, snapshot };
+  return { applied, shared, draft: settings, audio: appliedAudio, snapshot, recorder };
 }

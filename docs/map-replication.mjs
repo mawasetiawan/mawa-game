@@ -1,6 +1,6 @@
 const SEND_INTERVAL = 80;
 
-export function connectMapReplication(data, db, party, uid, signal) {
+export function connectMapReplication(data, db, party, uid, signal, trace) {
   const { ref, push, set, remove, onValue, onDisconnect } = data;
   const positions = ref(db, 'partyRooms/' + party + '/positions');
   const players = new Map();
@@ -32,12 +32,16 @@ export function connectMapReplication(data, db, party, uid, signal) {
     for (const id of players.keys()) {
       if (!next.has(id)) players.delete(id);
     }
-  }, error => console.error('Map replication read:', error));
+  }, error => {
+    trace?.log('network.read_failed', { code: error.code });
+    console.error('Map replication read:', error);
+  });
 
   let connectionEpoch = 0;
   const stopConnected = onValue(ref(db, '.info/connected'), async snapshot => {
     const epoch = ++connectionEpoch;
     connectedRef = null;
+    trace?.log('network.connection', { connected: snapshot.val() === true });
     if (snapshot.val() !== true || signal.aborted) return;
     const connection = push(ref(db, 'partyRooms/' + party + '/positions/' + uid));
     try {
@@ -48,6 +52,7 @@ export function connectMapReplication(data, db, party, uid, signal) {
       lastAttackId = undefined;
       nextUpdate = 0;
     } catch (error) {
+      trace?.log('network.setup_failed', { code: error.code });
       if (!signal.aborted && epoch === connectionEpoch) console.error('Map replication setup:', error);
     }
   });
@@ -63,10 +68,12 @@ export function connectMapReplication(data, db, party, uid, signal) {
   return {
     players,
     uid,
+    connected: () => Boolean(connectedRef),
     spawnAngle: [...uid].reduce((hash, letter) => Math.imul(hash ^ letter.charCodeAt(0), 16777619), 2166136261) >>> 0,
     publish(actor, now, character) {
       const attackId = actor.attack?.id;
       const startingHit = attackId !== undefined && attackId !== lastAttackId;
+      if (!connectedRef && startingHit) trace?.once('offline:' + attackId, 'network.attack_unsent', { swing: attackId });
       if (!connectedRef || (now < nextUpdate && !startingHit)) return;
       const round = value => Math.round(value * 100) / 100;
       const pose = { x: round(actor.x), y: round(actor.y), z: round(actor.z), crouch: actor.stance === 'crouch',
@@ -89,8 +96,14 @@ export function connectMapReplication(data, db, party, uid, signal) {
       lastSent = key;
       if (startingHit) lastAttackId = attackId;
       nextUpdate = now + SEND_INTERVAL;
-      void set(connection, pose).catch(error => {
+      const tracePacket = trace?.active && Boolean(pose.attack);
+      const traceSession = trace?.session;
+      if (tracePacket) trace.log('network.attack_sent', { swing: attackId, kind: pose.attack.kind, x: pose.x, y: pose.y, z: pose.z });
+      void set(connection, pose).then(() => {
+        if (tracePacket && trace.session === traceSession && !signal.aborted) trace.log('network.attack_write_confirmed', { swing: attackId });
+      }).catch(error => {
         if (connectedRef !== connection || signal.aborted) return;
+        if (trace?.session === traceSession) trace?.log('network.write_failed', { swing: attackId, code: error.code });
         if (lastSent === key) {
           lastSent = '';
           if (startingHit && lastAttackId === attackId) lastAttackId = undefined;

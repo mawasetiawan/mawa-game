@@ -1,5 +1,5 @@
 import { loadDeveloperConfig, mountDeveloperConfigPanel, createDeveloperPublication } from './developer-config.mjs?v=5';
-import { mountCombatPanel } from './combat.mjs?v=12';
+import { mountCombatPanel } from './combat.mjs?v=13';
 import { mountCharacterPanel } from './character-editor.mjs?v=21';
 import { mountCameraCuePanel } from './camera-cues.mjs?v=3';
 import { mountHudEditor } from './hud-editor.mjs?v=4';
@@ -7,7 +7,7 @@ import { mountCameraPanel, parseCamera } from './camera-settings.mjs?v=3';
 import { defaults, parseSettings, DEVELOPER_EMAIL, mountDeveloperPanel, mountDeveloperTabs } from './game-settings.mjs?v=apply';
 import { createLoginHandoff } from './login-handoff.mjs';
 import { firebaseConfig } from './config.mjs';
-import { connectMapReplication } from './map-replication.mjs?v=5';
+import { connectMapReplication } from './map-replication.mjs?v=6';
 import { connectParty } from './party.mjs?v=2';
 
 const ui = Object.fromEntries([...document.querySelectorAll('[id]')].map(node => [node.id, node]));
@@ -360,9 +360,9 @@ async function start() {
       character: characterEditor.snapshot(),
     }), publication);
     mountDeveloperTabs(ui.world, exploration.signal);
-    import('./explore.mjs?v=25').then(({ mountExploration }) => {
+    import('./explore.mjs?v=26').then(({ mountExploration }) => {
       if (exploration.signal.aborted) return;
-      const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal);
+      const replication = connectMapReplication(data, db, key, active.user.uid, exploration.signal, combat.recorder);
       return mountExploration(ui.world, exploration.signal, replication, settings, getCamera, characterEditor, combat,
         id => active.partyState?.roster[id]?.name ?? active.players[id]?.name ?? '');
     }).catch(error => {
