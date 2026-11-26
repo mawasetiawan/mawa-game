@@ -1,7 +1,7 @@
 import { isWorldTextOrMenu, preventWorldDoubleTap } from './world-input.mjs';
 import { mountPcControls } from './pc-controls.mjs';
 import { createAttackAudio } from './combat-audio.mjs';
-import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=13';
+import { createCombat, combatSettings, maxHealth } from './combat.mjs?v=14';
 import { createHealthBars, mountCombatHud, mountSpawnGizmo } from './combat-hud.mjs?v=3';
 import { createCameraCues, triggerCameraCue } from './camera-cues.mjs?v=3';
 import { createCameraRig } from './camera-rig.mjs?v=pc';
@@ -277,6 +277,11 @@ export async function mountExploration(world, signal, replication, settings, get
   const observer = new ResizeObserver(resize);
   observer.observe(canvas);
   resize();
+  replication.onAttack?.((uid, pose, now) => {
+    if (!combat.observeAttack(uid, pose, now)) return;
+    const freshPose = now - previous <= 280 ? actor : { ...actor, attack: null };
+    replication.publish(freshPose, now, characterEditor?.networkState());
+  });
   function animate(now) {
     const dt = Math.min((now - previous) / 1000, 0.05);
     previous = now;

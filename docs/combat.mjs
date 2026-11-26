@@ -201,6 +201,29 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
     actor.z = warp ? rootZ + (warp.z - rootZ) * weight : rootZ;
   }
 
+  function observeAttack(uid, pose, now) {
+    const attack = pose.attack;
+    if (!attack) return false;
+    const ageMs = Math.round(now - pose.receivedAt);
+    const source = trace?.active ? { player: trace.peer(uid), swing: attack.id,
+      key: 'incoming:' + uid + ':' + pose.connection + ':' + attack.id } : undefined;
+    if (source) trace.once(source.key, 'attack.observed', { player: source.player, swing: attack.id, kind: attack.kind, ageMs });
+    if (pose.hp === 0 || now - pose.receivedAt > 280) {
+      if (source) trace.once(source.key + ':discarded', 'attack.discarded', { player: source.player,
+        swing: attack.id, reason: pose.hp === 0 ? 'attacker_dead' : 'stale_snapshot', ageMs });
+      return false;
+    }
+    const last = connections.get(uid);
+    if (last && last.connection === pose.connection && last.id >= attack.id) return false;
+    const rules = sharedActions();
+    if (!Object.hasOwn(rules, attack.kind) || !receive(pose, { ...rules[attack.kind], kind: attack.kind, yaw: attack.yaw }, source)) return false;
+    connections.set(uid, { connection: pose.connection, id: attack.id });
+    const impacts = { ...actor.impacts, [uid]: attack.id };
+    actor.impacts = Object.fromEntries(Object.entries(impacts).slice(-8));
+    impactUntil = clock + .65;
+    return true;
+  }
+
   function tick(dt, now, players) {
     clock += dt;
     if (clock >= impactUntil) actor.impacts = null;
@@ -225,27 +248,7 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
       onControlReset();
     }
     for (const [uid, pose] of players) {
-      const attack = pose.attack;
-      if (!attack) continue;
-      const ageMs = Math.round(now - pose.receivedAt);
-      const source = trace?.active ? { player: trace.peer(uid), swing: attack.id,
-        key: 'incoming:' + uid + ':' + pose.connection + ':' + attack.id } : undefined;
-      if (source) trace.once(source.key, 'attack.observed', { player: source.player, swing: attack.id, kind: attack.kind, ageMs });
-      if (pose.hp === 0 || now - pose.receivedAt > 280) {
-        if (source) trace.once(source.key + ':discarded', 'attack.discarded', { player: source.player,
-          swing: attack.id, reason: pose.hp === 0 ? 'attacker_dead' : 'stale_snapshot', ageMs });
-        continue;
-      }
-      const last = connections.get(uid);
-      if (last && last.connection === pose.connection && last.id >= attack.id) continue;
-      const rules = sharedActions();
-      if (!Object.hasOwn(rules, attack.kind)) continue;
-      if (receive(pose, { ...rules[attack.kind], kind: attack.kind, yaw: attack.yaw }, source)) {
-        connections.set(uid, { connection: pose.connection, id: attack.id });
-        const impacts = { ...actor.impacts, [uid]: attack.id };
-        actor.impacts = Object.fromEntries(Object.entries(impacts).slice(-8));
-        impactUntil = clock + .65;
-      }
+      observeAttack(uid, pose, now);
       if (!actor.hp) return;
     }
     if (swing) {
@@ -299,7 +302,7 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
   }
 
   return {
-    press, interact, tick, receive,
+    press, interact, tick, receive, observeAttack,
     blocked: () => !actor.hp || clock < stunUntil,
     timeScale: () => clock < slowUntil ? .45 : 1,
     movement: input => clock < stunUntil || swing ? idleInputs : input,
