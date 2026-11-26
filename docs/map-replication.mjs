@@ -6,6 +6,7 @@ export function connectMapReplication(data, db, party, uid, signal) {
   const players = new Map();
   let connectedRef = null;
   let lastSent = '';
+  let lastAttackId;
   let nextUpdate = 0;
 
   const stopPositions = onValue(positions, snapshot => {
@@ -44,6 +45,7 @@ export function connectMapReplication(data, db, party, uid, signal) {
       if (signal.aborted || epoch !== connectionEpoch) return;
       connectedRef = connection;
       lastSent = '';
+      lastAttackId = undefined;
       nextUpdate = 0;
     } catch (error) {
       if (!signal.aborted && epoch === connectionEpoch) console.error('Map replication setup:', error);
@@ -63,7 +65,9 @@ export function connectMapReplication(data, db, party, uid, signal) {
     uid,
     spawnAngle: [...uid].reduce((hash, letter) => Math.imul(hash ^ letter.charCodeAt(0), 16777619), 2166136261) >>> 0,
     publish(actor, now, character) {
-      if (!connectedRef || now < nextUpdate) return;
+      const attackId = actor.attack?.id;
+      const startingHit = attackId !== undefined && attackId !== lastAttackId;
+      if (!connectedRef || (now < nextUpdate && !startingHit)) return;
       const round = value => Math.round(value * 100) / 100;
       const pose = { x: round(actor.x), y: round(actor.y), z: round(actor.z), crouch: actor.stance === 'crouch',
         hp: actor.hp, life: actor.life, yaw: Math.atan2(actor.facingX, actor.facingZ),
@@ -83,10 +87,14 @@ export function connectMapReplication(data, db, party, uid, signal) {
       if (key === lastSent) return;
       const connection = connectedRef;
       lastSent = key;
+      if (startingHit) lastAttackId = attackId;
       nextUpdate = now + SEND_INTERVAL;
       void set(connection, pose).catch(error => {
         if (connectedRef !== connection || signal.aborted) return;
-        if (lastSent === key) lastSent = '';
+        if (lastSent === key) {
+          lastSent = '';
+          if (startingHit && lastAttackId === attackId) lastAttackId = undefined;
+        }
         console.error('Map replication write:', error);
       });
     }

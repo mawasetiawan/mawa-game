@@ -40,7 +40,12 @@ const strikeRadius = .46;
 const strikeOffset = .66;
 const warpGap = .89;
 const maxWarpHeight = .65;
+const minimumSwingSeconds = .18;
 const originOf = actor => ({ x: actor.x, y: actor.y, z: actor.z });
+const warpProgress = (elapsed, warp) => {
+  const t = Math.min(1, elapsed / warp.duration);
+  return t * t * (3 - 2 * t);
+};
 
 export function touchesAttack(origin, target, attack) {
   const x = origin.x + Math.sin(attack.yaw) * strikeOffset;
@@ -63,7 +68,7 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
     const slot = attackSlot(id, stage);
     const clipDuration = animationDuration(slot);
     const seconds = Number.isFinite(clipDuration) && clipDuration > 0 ?
-      clipDuration : .52 + (id === 'ultimate' ? .22 : 0);
+      Math.max(minimumSwingSeconds, clipDuration) : .52 + (id === 'ultimate' ? .22 : 0);
     const origin = originOf(actor);
     swing = {
       id, stage, elapsed: 0, speed: animationSpeed(), seconds, origin, reach: settings.actions[id].reach, motion: attackMotion?.(slot),
@@ -160,8 +165,12 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
     const { x, z } = swing.motion(time);
     const warp = swing.warp;
     const facing = warp ? warp.fromYaw + warp.turn : swing.packet.yaw;
-    actor.x = swing.origin.x + x * Math.cos(facing) + z * Math.sin(facing);
-    actor.z = swing.origin.z + z * Math.cos(facing) - x * Math.sin(facing);
+    const rootX = swing.origin.x + x * Math.cos(facing) + z * Math.sin(facing);
+    const rootZ = swing.origin.z + z * Math.cos(facing) - x * Math.sin(facing);
+    // Align the authored displacement with the contact position before the hitbox opens.
+    const weight = warp ? warpProgress(time, warp) : 0;
+    actor.x = warp ? rootX + (warp.x - rootX) * weight : rootX;
+    actor.z = warp ? rootZ + (warp.z - rootZ) * weight : rootZ;
   }
 
   function tick(dt, now, players) {
@@ -218,8 +227,7 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
     const warp = swing.warp;
     actor.warping = Boolean(swing.motion || (warp && swing.elapsed < warp.duration));
     if (warp && !swing.warpFinished) {
-      const t = Math.min(1, swing.elapsed / warp.duration);
-      const eased = t * t * (3 - 2 * t);
+      const eased = warpProgress(swing.elapsed, warp);
       if (!swing.motion) {
         actor.x = swing.origin.x + (warp.x - swing.origin.x) * eased;
         actor.z = swing.origin.z + (warp.z - swing.origin.z) * eased;
@@ -228,7 +236,7 @@ export function createCombat(actor, settings, fallbackSpawn, animationDuration, 
       actor.facingX = Math.sin(yaw);
       actor.facingZ = Math.cos(yaw);
       swing.packet = { ...swing.packet, yaw: Math.atan2(actor.facingX, actor.facingZ) };
-      swing.warpFinished = t === 1;
+      swing.warpFinished = swing.elapsed >= warp.duration;
     }
     if (swing.motion) applyRootMotion(swing.elapsed);
     const contactStart = Math.max(swing.seconds * .34, warp?.duration ?? 0);
